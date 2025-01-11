@@ -1,0 +1,69 @@
+Task 1: Attach a Duty Type Code to an Individual Employee
+Requirement ID: R47
+Description: The system must allow the assignment of a duty type code (e.g., "first duty," "end duty," etc.) to individual employees.
+
+Subtasks:
+Implement Duty Code Assignment:
+
+Develop a feature to assign a duty type code to an employee profile in the roster system.
+Test Parameter: Verify that the assigned duty type code is stored and retrievable for each employee.
+Verify Duty Type Code Options:
+
+Ensure the system provides a predefined list of duty type codes (e.g., "first duty," "end duty").
+Test Parameter: Verify that users cannot assign invalid or undefined duty codes.
+User Interface for Assignment:
+
+Create a user-friendly interface where users can select and assign a duty type code to employees.
+Test Parameter: Check that the interface updates the roster with the correct duty type code for selected employees.
+
+Task 2: Calculate Financial Consequences of a Duty Roster
+Requirement ID: R475
+Description: The system must calculate the financial implications of a given duty roster, expressed in both hours and monetary terms.
+
+Subtasks:
+Implement Hourly Calculations:
+
+Create functionality to calculate the total hours worked by all employees in a roster.
+Test Parameter: Verify that the total hours match the sum of all shifts assigned in the roster.
+Monetary Calculations:
+
+Develop a calculation module to compute monetary costs based on employee rates and total hours.
+Test Parameter: Verify accuracy by comparing calculated costs with manually computed values for sample rosters.
+Display Financial Breakdown:
+
+Provide a detailed breakdown of hours and costs in the system's output.
+Test Parameter: Confirm that users can view both the total and employee-specific financial implications.
+Task 3: Temporary Worker Usage Alert
+Requirement ID: R479
+Description: The system must notify users if a duty roster involves a temporary worker for more than three months.
+
+Subtasks:
+Track Temporary Worker Duration:
+
+Implement tracking of start and end dates for each temporary worker's assignment.
+Test Parameter: Ensure the system accurately tracks the duration of all temporary worker assignments.
+Generate Alerts:
+
+Add functionality to generate alerts when the cumulative assignment duration of a temporary worker exceeds three months.
+Test Parameter: Verify that the system correctly identifies over-limit assignments.
+User Notification:
+
+Display a clear, prominent message to the user when the threshold is exceeded.
+Test Parameter: Check that the alert message is displayed on both the roster review screen and during roster submission.
+Task 4: Provide Understandable Error Messages
+Requirement ID: R669
+Description: The system must display clear text messages in case of errors and instruct users on how to proceed.
+
+Subtasks:
+Error Message Content:
+
+Define a standard template for error messages, including an explanation of the error and steps to resolve it.
+Test Parameter: Verify that each error message includes concise and actionable instructions.
+Error Handling Integration:
+
+Ensure all modules (e.g., duty code assignment, financial calculations) provide appropriate error messages for invalid operations or system issues.
+Test Parameter: Simulate errors in each module and confirm that appropriate messages are displayed.
+User Experience Testing:
+
+Test messages with users to ensure they are easy to understand and provide clear guidance.
+Test Parameter: Collect feedback from at least 5 test users and ensure at least 80% find the messages helpful and actionable.
