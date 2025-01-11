@@ -3,18 +3,22 @@ Actor: Roster manager
 Purpose: Assign appropriate duty type codes (e.g., "First Duty," "End Duty") to employees to streamline scheduling.
 
 Sub-tasks:
-  Select an employee from the roster.
-    Problem: Large rosters make searching cumbersome.
-  Assign a pre-defined duty type code.
-    Problem: Risk of assigning invalid or unsupported codes.
-  Save the assignment and validate.
-    Problem: No feedback on successful or failed assignments.
 
-Example Solution:
-  Implement a search feature to quickly locate employees.
-  Use a drop-down list of valid duty codes to eliminate errors.
-  Provide success/error messages after each assignment.
+Select an employee from the roster.
+Problem: Large rosters make searching cumbersome.
+Example Solution: Implement a search feature with filters (e.g., by name, department, or ID) to quickly locate employees.
+Assign a pre-defined duty type code.
+Problem: Risk of assigning invalid or unsupported codes.
+Example Solution: Use a drop-down list of valid duty codes, preventing unsupported or duplicate entries.
+Save the assignment and validate.
+Problem: No feedback on successful or failed assignments.
+Example Solution: Display a confirmation message ("Duty Type assigned successfully") or error ("Failed: Invalid Duty Code") after saving.
+Variants:
 
+1a. Duty type is assigned successfully and appears on the roster.
+1b. Invalid duty code entered (e.g., unsupported characters).
+1c. Duty code is left blank (error handling).
+1d. Duplicate duty type assigned to the same employee for the same day.
 Task: R475 - Calculate Financial Impact
 Actor: Roster manager
 Purpose: Calculate the total hours and monetary cost of a given duty roster for payroll or budget purposes.
@@ -22,64 +26,80 @@ Purpose: Calculate the total hours and monetary cost of a given duty roster for 
 Sub-tasks:
 
 Input hourly rates and roster details.
-  Problem: Missing or inconsistent hourly rate data.
+Problem: Missing or inconsistent hourly rate data.
+Example Solution: Validate input fields and flag missing hourly rates with a warning (e.g., "Hourly rate required for Employee ID 101").
 Compute total hours worked by all employees.
-  Problem: Errors in data processing for large rosters.
+Problem: Errors in data processing for large rosters.
+Example Solution: Optimize calculations for efficiency and include a progress indicator for rosters with 1,000+ employees.
 Multiply total hours by hourly rates and display costs.
-  Problem: Results not presented in an easily interpretable format.
+Problem: Results not presented in an easily interpretable format.
+Example Solution: Present the financial summary in a table format, with subtotals for departments and an overall total.
+Variants:
 
-Example Solution:
-  Validate hourly rates before calculations.
-  Optimize the system for large datasets to handle up to 1,000 employees efficiently.
-  Display results in tabular and graphical formats for clarity.
-
+2a. All employees have uniform hourly rates.
+2b. Employees have different hourly rates based on roles.
+2c. Hourly rate is missing for one or more employees.
+2d. Hours worked exceed expected limits (e.g., overtime scenarios).
 Task: R479 - Notify Use of Temporary Worker Beyond Three Months
 Actor: Roster manager
 Purpose: Ensure compliance with regulations by alerting users when a temporary worker’s schedule exceeds three months.
 
 Sub-tasks:
-  Track the start and end dates of all temporary workers.
-    Problem: Missing or incorrect start dates in worker profiles.
-  Compare dates to identify workers exceeding the three-month threshold.
-    Problem: Lack of automated alerts for compliance violations.
-  Notify the manager with worker details and compliance warnings.
-    Problem: Notifications may lack actionable information.
 
-Example Solution:
-  Automatically validate and flag incomplete worker profiles.
-  Implement an alert system that triggers 15 days before the threshold is reached.
-  Include detailed worker information and resolution steps in notifications.
+Track the start and end dates of all temporary workers.
+Problem: Missing or incorrect start dates in worker profiles.
+Example Solution: Validate profiles during entry and prompt corrections for missing or incorrect dates.
+Compare dates to identify workers exceeding the three-month threshold.
+Problem: Lack of automated alerts for compliance violations.
+Example Solution: Use a background job to flag workers approaching the threshold and generate an alert.
+Notify the manager with worker details and compliance warnings.
+Problem: Notifications may lack actionable information.
+Example Solution: Include specific details in alerts (e.g., "Worker ID 302 exceeds limit. Contract started on 01-01-2024.") with resolution steps.
+Variants:
 
+3a. One temporary worker exceeds three months.
+3b. Multiple temporary workers exceed three months.
+3c. Start or end date missing for a temporary worker.
+3d. Worker’s contract end date is extended past three months without updates in the system.
 Task: R669 - Error Messaging and Guidance
 Actor: Roster manager
 Purpose: Provide clear error messages and actionable guidance to resolve issues during scheduling or calculations.
 
 Sub-tasks:
-  Detect errors in data input or processing.
-    Problem: Ambiguous or generic error messages confuse users.
-  Display a detailed error message.
-    Problem: Lack of resolution steps included in the message.
-  Link the user to relevant help documentation.
-    Problem: No integration between error messages and help resources.
 
-Example Solution:
-  Create specific error messages tailored to common issues (e.g., "Missing hourly rate for Employee ID 203").
-  Embed clear guidance in the message (e.g., "Go to Employee Profiles > Edit Rates").
-  Provide a “Learn More” link in error messages that redirects to relevant help content.
+Detect errors in data input or processing.
+Problem: Ambiguous or generic error messages confuse users.
+Example Solution: Use specific messages like "Error: Employee ID 205 missing in roster" instead of generic errors.
+Display a detailed error message.
+Problem: Lack of resolution steps included in the message.
+Example Solution: Pair error messages with actionable guidance, e.g., "Please go to Employee Profiles to update missing data."
+Link the user to relevant help documentation.
+Problem: No integration between error messages and help resources.
+Example Solution: Include a “Learn More” button that opens the relevant help topic directly.
+Variants:
 
+4a. Missing or invalid input (e.g., blank duty code, incorrect hourly rate).
+4b. System-related errors (e.g., backend failure, database connection issues).
+4c. Incorrect format for required fields (e.g., letters in numeric fields).
+4d. Overlapping shift timings for an employee.
 Task: R700 - Generate Reports
 Actor: Roster manager
 Purpose: Export detailed reports of duty rosters, financial calculations, and compliance alerts for audits and payroll.
 
 Sub-tasks:
-  Select the reporting period and scope (e.g., weekly, monthly).
-    Problem: Complex filtering options make selection difficult.
-  Generate the report in a chosen format (e.g., PDF, Excel).
-    Problem: Formatting inconsistencies across reports.
-  Validate the data and share the report.
-    Problem: Errors in shared data or missing details.
 
-Example Solution:
-  Provide pre-set filters for common periods (e.g., "Last Week").
-  Standardize formatting for all exported reports.
-  Include an automated validation process before sharing reports.
+Select the reporting period and scope (e.g., weekly, monthly).
+Problem: Complex filtering options make selection difficult.
+Example Solution: Provide pre-defined filters for common reporting periods like "Last Week" or "Current Month."
+Generate the report in a chosen format (e.g., PDF, Excel).
+Problem: Formatting inconsistencies across reports.
+Example Solution: Standardize report layouts and allow users to preview before final export.
+Validate the data and share the report.
+Problem: Errors in shared data or missing details.
+Example Solution: Include a validation summary indicating errors or missing fields before sharing reports.
+Variants:
+
+5a. Generate a standard report for a one-week roster.
+5b. Export customized reports for specific departments or time frames.
+5c. Missing or incomplete data in the roster results in errors.
+5d. Large report sizes exceed system capacity (e.g., export failure).
