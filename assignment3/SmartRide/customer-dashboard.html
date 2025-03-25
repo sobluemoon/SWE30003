@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SmartRide - Customer Dashboard</title>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.4.1/font/bootstrap-icons.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet" />
+  <link href="css/bootstrap.min.css" rel="stylesheet" />
+  <link href="css/style.css" rel="stylesheet" />
+  <link href="lib/animate/animate.min.css" rel="stylesheet" />
+  <style>
+    .dashboard-card {
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .dashboard-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    }
+    .dashboard-hero {
+      background: url('img/taxi.jpg') center center/cover no-repeat;
+      position: relative;
+    }
+    .dashboard-hero::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(0, 0, 0, 0.6);
+    }
+    .dashboard-hero .container {
+      position: relative;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <!-- Topbar -->
+  <div class="container-fluid topbar bg-secondary d-none d-xl-block w-100">
+    <div class="container">
+      <div class="row gx-0 align-items-center" style="height: 45px;">
+        <div class="col-lg-6 text-center text-lg-start mb-lg-0">
+          <div class="d-flex flex-wrap">
+            <a href="#" class="text-muted me-4"><i class="fas fa-map-marker-alt text-primary me-2"></i>Find Us</a>
+            <a href="tel:+01234567890" class="text-muted me-4"><i class="fas fa-phone-alt text-primary me-2"></i>+01234567890</a>
+            <a href="mailto:info@smartride.com" class="text-muted"><i class="fas fa-envelope text-primary me-2"></i>info@smartride.com</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navbar -->
+  <div class="container-fluid nav-bar sticky-top px-0 px-lg-4 py-2 py-lg-0">
+    <div class="container">
+      <nav class="navbar navbar-expand-lg navbar-light">
+        <a href="index.html" class="navbar-brand p-0">
+          <h1 class="display-6 text-primary"><i class="fas fa-car-alt me-3"></i>SmartRide</h1>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse">
+          <span class="fa fa-bars"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarCollapse">
+          <div class="navbar-nav mx-auto py-0">
+            <a href="index.html" class="nav-item nav-link">Home</a>
+            <a href="customer-dashboard.html" class="nav-item nav-link active">Dashboard</a>
+            <a href="history.html" class="nav-item nav-link" id="historyLink" style="display:none">Ride History</a>
+          </div>
+          <div id="userControls" class="d-flex align-items-center"></div>
+        </div>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Dashboard Hero -->
+  <div class="container-fluid text-white py-5 dashboard-hero">
+    <div class="container text-center">
+      <h1 id="dashboardTitle" class="display-4 text-white fw-bold">Welcome!</h1>
+      <p class="lead">Manage your SmartRide experience here.</p>
+    </div>
+  </div>
+
+  <!-- Dashboard Options -->
+  <div class="container my-5">
+    <div class="row g-4 justify-content-center">
+      <!-- Book a Ride (Always Visible) -->
+      <div class="col-md-4 wow fadeInUp" data-wow-delay="0.1s">
+        <div class="bg-light text-center p-4 rounded shadow-sm h-100 dashboard-card">
+          <i class="fas fa-car fa-3x text-primary mb-3"></i>
+          <h5 class="mb-2">Book a Ride</h5>
+          <p>Plan your trip easily</p>
+          <a href="book.html" class="btn btn-outline-primary btn-sm rounded-pill">Go</a>
+        </div>
+      </div>
+
+      <!-- Track Ride -->
+      <div class="col-md-4 wow fadeInUp" data-wow-delay="0.2s" id="trackCard" style="display:none">
+        <div class="bg-light text-center p-4 rounded shadow-sm h-100 dashboard-card">
+          <i class="fas fa-map-marker-alt fa-3x text-success mb-3"></i>
+          <h5 class="mb-2">Track Ride</h5>
+          <p>Live location updates</p>
+          <a href="track.html" class="btn btn-outline-success btn-sm rounded-pill">Go</a>
+        </div>
+      </div>
+
+      <!-- Feedback -->
+      <div class="col-md-4 wow fadeInUp" data-wow-delay="0.3s" id="feedbackCard" style="display:none">
+        <div class="bg-light text-center p-4 rounded shadow-sm h-100 dashboard-card">
+          <i class="fas fa-comments fa-3x text-warning mb-3"></i>
+          <h5 class="mb-2">Feedback</h5>
+          <p>Share your experience</p>
+          <a href="feedback.html" class="btn btn-outline-warning btn-sm rounded-pill">Go</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="container-fluid footer py-5 bg-secondary text-white text-center">
+    <p class="mb-0">SmartRide © 2025. All rights reserved.</p>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="lib/wow/wow.min.js"></script>
+  <script>
+    new WOW().init();
+
+    const user = JSON.parse(localStorage.getItem("user"));
+    const userControls = document.getElementById("userControls");
+    const dashboardTitle = document.getElementById("dashboardTitle");
+    const latestBooking = JSON.parse(localStorage.getItem("latestBooking"));
+    const rideHistory = JSON.parse(localStorage.getItem("rideHistory") || "[]");
+    const trackCard = document.getElementById("trackCard");
+    const feedbackCard = document.getElementById("feedbackCard");
+    const historyLink = document.getElementById("historyLink");
+
+    if (!user || user.role !== "customer") {
+      if (!user) window.location.href = "login.html";
+      else if (user.role === "admin") window.location.href = "admin-dashboard.html";
+      else window.location.href = "driver-dashboard.html";
+    } else {
+      dashboardTitle.textContent = `Welcome, ${user.fullname || user.email.split("@")[0]}!`;
+      userControls.innerHTML = `
+        <span class="me-2 fw-bold text-dark">${user.fullname || user.email}</span>
+        <button onclick="logout()" class="btn btn-outline-danger btn-sm rounded-circle" title="Logout">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>`;
+
+      if (latestBooking) {
+        trackCard.style.display = "block";
+        if (latestBooking.paid) {
+          feedbackCard.style.display = "block";
+        }
+      }
+
+      if (rideHistory.length > 0) {
+        historyLink.style.display = "block";
+      }
+    }
+
+    function logout() {
+      Swal.fire({
+        icon: 'success',
+        title: 'Logged Out',
+        text: 'You have been successfully logged out.',
+        timer: 1500,
+        showConfirmButton: false
+      }).then(() => {
+        localStorage.removeItem("user");
+        window.location.href = "index.html";
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SmartRide - Book a Ride</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.4.1/font/bootstrap-icons.css" rel="stylesheet" />
+  <link href="css/bootstrap.min.css" rel="stylesheet" />
+  <link href="css/style.css" rel="stylesheet" />
+  <link href="lib/animate/animate.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.1/dist/sweetalert2.min.css" rel="stylesheet" />
+  <style>
+    .hero-book {
+      background: url('img/taxi.jpg') center center/cover no-repeat;
+      position: relative;
+    }
+    .hero-book::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(0, 0, 0, 0.6);
+    }
+    .hero-book .container {
+      position: relative;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <div class="container-fluid nav-bar sticky-top px-0 px-lg-4 py-2 py-lg-0">
+    <div class="container">
+      <nav class="navbar navbar-expand-lg navbar-light">
+        <a href="index.html" class="navbar-brand p-0">
+          <h1 class="display-6 text-primary"><i class="fas fa-car-alt me-3"></i>SmartRide</h1>
+        </a>
+        <div class="ms-auto" id="userControls"></div>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <div class="container-fluid text-white py-5 hero-book">
+    <div class="container text-center">
+      <h1 class="display-4 text-white fw-bold wow fadeIn">Book Your Ride</h1>
+      <p class="lead wow fadeInUp" data-wow-delay="0.2s">Fill in the details to get fare & ETA, then confirm your ride</p>
+    </div>
+  </div>
+
+  <!-- Booking Form -->
+  <div class="container my-5">
+    <div class="row justify-content-center">
+      <div class="col-md-6">
+        <div class="bg-light p-4 rounded shadow-sm wow fadeInUp">
+          <form id="bookingForm">
+            <div class="mb-3">
+              <label class="form-label">Pickup Location</label>
+              <input type="text" class="form-control" id="pickup" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Drop-off Location</label>
+              <input type="text" class="form-control" id="dropoff" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Ride Type</label>
+              <select class="form-select" id="rideType" required>
+                <option value="">-- Select --</option>
+                <option value="bike">Bike</option>
+                <option value="car4">Car (4-Seater)</option>
+                <option value="car7">Car (7-Seater)</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Payment Method</label>
+              <select class="form-select" id="paymentMethod" required>
+                <option value="">-- Select Payment Method --</option>
+                <option value="cash">Cash</option>
+                <option value="card">Credit/Debit Card</option>
+                <option value="ewallet">E-Wallet</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Fare Estimate</label>
+              <input type="text" class="form-control" id="fareEstimate" readonly />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Estimated Time of Arrival (ETA)</label>
+              <input type="text" class="form-control" id="etaEstimate" readonly />
+            </div>
+            <div class="d-flex justify-content-between">
+              <button type="button" class="btn btn-outline-secondary w-45" onclick="window.location.href='customer-dashboard.html'">Cancel</button>
+              <button type="submit" class="btn btn-primary w-45">Confirm Booking</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="container-fluid footer py-5 bg-secondary text-white text-center">
+    <p class="mb-0">SmartRide © 2025. All rights reserved.</p>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.1/dist/sweetalert2.all.min.js"></script>
+  <script src="lib/wow/wow.min.js"></script>
+  <script>new WOW().init();</script>
+  <script>
+    const user = JSON.parse(localStorage.getItem("user"));
+    const userControls = document.getElementById("userControls");
+    const existingBooking = JSON.parse(localStorage.getItem("latestBooking"));
+
+    if (!user || user.role !== "customer") {
+      window.location.href = "login.html";
+    } else {
+      userControls.innerHTML = `
+        <span class="fw-bold text-dark me-3">${user.fullname || user.email}</span>
+        <button onclick="logout()" class="btn btn-outline-danger btn-sm rounded-circle" title="Logout">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>`;
+    }
+
+    function logout() {
+      localStorage.removeItem("user");
+      window.location.href = "index.html";
+    }
+
+    if (existingBooking && !existingBooking.paid && existingBooking.userEmail === user.email) {
+      Swal.fire({
+        icon: 'info',
+        title: 'Ride Already In Progress',
+        text: 'You already have a ride in progress. You cannot book another until it is completed.',
+        confirmButtonText: 'Track Ride',
+        confirmButtonColor: '#3085d6'
+      }).then(() => {
+        window.location.href = "track.html";
+      });
+    }
+
+    const pricing = {
+      bike: { fare: 5, eta: "5-10 mins" },
+      car4: { fare: 10, eta: "8-15 mins" },
+      car7: { fare: 15, eta: "10-20 mins" }
+    };
+
+    document.getElementById("rideType").addEventListener("change", function () {
+      const selected = this.value;
+      const fareField = document.getElementById("fareEstimate");
+      const etaField = document.getElementById("etaEstimate");
+
+      if (pricing[selected]) {
+        fareField.value = `$${pricing[selected].fare.toFixed(2)}`;
+        etaField.value = pricing[selected].eta;
+      } else {
+        fareField.value = "";
+        etaField.value = "";
+      }
+    });
+
+    document.getElementById("bookingForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      const pickup = document.getElementById("pickup").value.trim();
+      const dropoff = document.getElementById("dropoff").value.trim();
+      const rideType = document.getElementById("rideType").value;
+      const paymentMethod = document.getElementById("paymentMethod").value;
+      const fare = pricing[rideType].fare;
+
+      const ride = {
+        pickup,
+        dropoff,
+        rideType,
+        paymentMethod,
+        fare: `$${fare.toFixed(2)}`,
+        datetime: new Date().toLocaleString(),
+        driver: "Assigned Soon",
+        paid: false,
+        feedback: null,
+        rating: null,
+        userEmail: user.email
+      };
+
+      const history = JSON.parse(localStorage.getItem("rideHistory") || "[]");
+      history.unshift(ride);
+      localStorage.setItem("rideHistory", JSON.stringify(history));
+      localStorage.setItem("latestBooking", JSON.stringify(ride));
+      localStorage.setItem("trackingStep", 0);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Booking Confirmed!',
+        text: 'Redirecting to track your ride...'
+      }).then(() => {
+        window.location.href = "track.html";
+      });
+    });
+  </script>
+</body>
+</html>

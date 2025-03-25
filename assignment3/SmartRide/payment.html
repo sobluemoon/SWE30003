@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SmartRide - Payment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.4.1/font/bootstrap-icons.css" rel="stylesheet" />
+  <link href="css/bootstrap.min.css" rel="stylesheet" />
+  <link href="css/style.css" rel="stylesheet" />
+  <link href="lib/animate/animate.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.1/dist/sweetalert2.min.css" rel="stylesheet" />
+  <style>
+    .hero-payment {
+      background: url('img/taxi.jpg') center center/cover no-repeat;
+      position: relative;
+    }
+    .hero-payment::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(0, 0, 0, 0.6);
+    }
+    .hero-payment .container {
+      position: relative;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <div class="container-fluid nav-bar sticky-top px-0 px-lg-4 py-2 py-lg-0 bg-light">
+    <div class="container">
+      <nav class="navbar navbar-expand-lg navbar-light">
+        <a href="index.html" class="navbar-brand p-0">
+          <h1 class="display-6 text-primary"><i class="fas fa-car-alt me-3"></i>SmartRide</h1>
+        </a>
+        <div class="ms-auto" id="userInfo"></div>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <div class="container-fluid text-white py-5 hero-payment wow fadeIn" data-wow-delay="0.1s">
+    <div class="container text-center">
+      <h1 class="display-4 fw-bold text-white">Payment Summary</h1>
+      <p class="lead">Review and confirm your payment</p>
+    </div>
+  </div>
+
+  <!-- Payment Details -->
+  <div class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-md-6">
+        <div class="bg-light p-4 rounded shadow-sm mb-4" id="paymentSummary">
+          <!-- Ride details inserted via JS -->
+        </div>
+        <div class="text-center">
+          <button class="btn btn-success px-4 rounded-pill" onclick="confirmPayment()">Confirm Payment</button>
+        </div>
+        <p class="text-muted text-center mt-3" id="noteText"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="container-fluid footer py-5 bg-secondary text-white text-center">
+    <p class="mb-0">SmartRide © 2025. All rights reserved.</p>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.1/dist/sweetalert2.all.min.js"></script>
+  <script src="lib/wow/wow.min.js"></script>
+  <script src="js/main.js"></script>
+  <script>new WOW().init();</script>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem("user"));
+    const booking = JSON.parse(localStorage.getItem("latestBooking"));
+    const userInfo = document.getElementById("userInfo");
+    const summary = document.getElementById("paymentSummary");
+    const noteText = document.getElementById("noteText");
+
+    if (!user || user.role !== "customer") {
+      window.location.href = "login.html";
+    } else {
+      userInfo.innerHTML = `
+        <span class="fw-bold text-dark me-3">${user.fullname || user.email}</span>
+        <button onclick="logout()" class="btn btn-outline-danger btn-sm rounded-circle" title="Logout">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      `;
+    }
+
+    function logout() {
+      localStorage.removeItem("user");
+      window.location.href = "index.html";
+    }
+
+    if (booking) {
+      summary.innerHTML = `
+        <h5 class="mb-3 text-primary">Ride Receipt</h5>
+        <p><strong>Pickup:</strong> ${booking.pickup}</p>
+        <p><strong>Dropoff:</strong> ${booking.dropoff}</p>
+        <p><strong>Date & Time:</strong> ${booking.datetime}</p>
+        <p><strong>Driver:</strong> ${booking.driver || "Assigned Soon"}</p>
+        <p><strong>Ride Type:</strong> ${booking.rideType}</p>
+        <p><strong>Fare:</strong> ${booking.fare || booking.cost || "$0.00"}</p>
+        <p><strong>Payment Method:</strong> ${getPaymentMethodLabel(booking.paymentMethod)}</p>
+      `;
+
+      if (booking.paymentMethod === "cash") {
+        noteText.innerText = "This is a cash ride. Payment is marked complete for demo purposes.";
+      } else if (booking.paymentMethod === "card") {
+        noteText.innerText = "Your card will be charged securely.";
+      } else if (booking.paymentMethod === "ewallet") {
+        noteText.innerText = "Redirecting to your e-wallet provider... (simulated)";
+      }
+    }
+
+    function getPaymentMethodLabel(method) {
+      switch (method) {
+        case "cash": return "Cash";
+        case "card": return "Credit/Debit Card";
+        case "ewallet": return "E-Wallet";
+        default: return method;
+      }
+    }
+
+    function confirmPayment() {
+      const rideHistory = JSON.parse(localStorage.getItem("rideHistory") || "[]");
+
+      if (rideHistory.length > 0 && rideHistory[0].userEmail === user.email) {
+        rideHistory[0].paid = true;
+        localStorage.setItem("rideHistory", JSON.stringify(rideHistory));
+      }
+
+      if (booking && booking.userEmail === user.email) {
+        booking.paid = true;
+        localStorage.setItem("latestBooking", JSON.stringify(booking));
+      }
+
+      const method = booking.paymentMethod;
+      const delay = method === "cash" ? 100 : 1000;
+
+      setTimeout(() => {
+        Swal.fire({
+          icon: 'success',
+          title: 'Payment Successful!',
+          text: 'Your ride is now complete.',
+          confirmButtonText: 'Continue'
+        }).then(() => {
+          Swal.fire({
+            title: 'Rate your ride?',
+            text: 'Would you like to rate your driver now?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, rate now',
+            cancelButtonText: 'Maybe later'
+          }).then(result => {
+            if (result.isConfirmed) {
+              window.location.href = "feedback.html";
+            } else {
+              localStorage.removeItem("latestBooking");
+              window.location.href = "customer-dashboard.html";
+            }
+          });
+        });
+      }, delay);
+    }
+  </script>
+</body>
+</html>
