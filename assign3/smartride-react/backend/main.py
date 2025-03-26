@@ -204,3 +204,37 @@ def update_gps_tracking(gps_data: GPSTrackingCreate):
     cursor.close()
     conn.close()
     return {"message": "GPS tracking updated successfully"}
+
+# ✅ GET all rides
+@app.get("/rides/")
+def get_rides():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM rides")
+    rides = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rides
+
+# ✅ GET all feedbacks
+@app.get("/feedbacks/")
+def get_feedbacks():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM feedbacks")
+    feedbacks = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return feedbacks
+
+# ✅ GET all GPS tracking data
+@app.get("/gps/")
+def get_gps_tracking():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM gps_tracking")
+    gps_data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return gps_data
+
