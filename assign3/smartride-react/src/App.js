@@ -7,6 +7,7 @@ import Option from "./pages/Option";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import CustomerDashboard from "./pages/CustomerDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 import BookRide from "./pages/BookRide";
 import TrackRide from "./pages/TrackRide";
 import Payment from "./pages/Payment";
@@ -31,6 +32,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["customer"]}>
               <CustomerDashboard />
+            </ProtectedRoute>
+          }
+        />
+        {/*Route for admin dashboard */}
+        <Route
+          path="/admin-dashboard"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminDashboard />
             </ProtectedRoute>
           }
         />
