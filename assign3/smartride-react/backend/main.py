@@ -7,8 +7,8 @@ import mysql.connector
 db_config = {
     "host": "localhost",
     "user": "root",
-    "password": "password",
-    "database": "sorsp_db"
+    "password": "",
+    "database": "smartride"
 }
 
 def get_db_connection():
