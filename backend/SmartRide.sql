@@ -1,3 +1,4 @@
+--test
 -- Create Database
 CREATE DATABASE smartride;
 USE smartride;
@@ -21,8 +22,6 @@ CREATE TABLE customers (
 CREATE TABLE drivers (
     driver_id INT PRIMARY KEY,
     availability BOOLEAN DEFAULT TRUE,
-    current_lat DECIMAL(10, 8) DEFAULT NULL,
-    current_lng DECIMAL(11, 8) DEFAULT NULL,
     FOREIGN KEY (driver_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
@@ -48,11 +47,7 @@ CREATE TABLE rides (
     driver_id INT NOT NULL,
     pickup_location VARCHAR(255) NOT NULL,
     dropoff_location VARCHAR(255) NOT NULL,
-    pickup_lat DECIMAL(10, 8) NOT NULL,
-    pickup_lng DECIMAL(11, 8) NOT NULL,
-    dropoff_lat DECIMAL(10, 8) NOT NULL,
-    dropoff_lng DECIMAL(11, 8) NOT NULL,
-    status ENUM('Pending', 'Accepted', 'Picked Up', 'In Progress', 'Completed', 'Cancelled') DEFAULT 'Pending',
+    status ENUM('Pending', 'Ongoing', 'Completed', 'Cancelled') DEFAULT 'Pending',
     fare FLOAT DEFAULT NULL,
     start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     end_time TIMESTAMP NULL,
@@ -93,11 +88,9 @@ CREATE TABLE notifications (
 -- GPS Tracking Table
 CREATE TABLE gps_tracking (
     tracking_id INT AUTO_INCREMENT PRIMARY KEY,
-    ride_id INT NOT NULL,
-    driver_lat DECIMAL(10, 8) NOT NULL,
-    driver_lng DECIMAL(11, 8) NOT NULL,
+    ride_id INT UNIQUE NOT NULL,
     eta INT NOT NULL COMMENT 'Estimated time of arrival in minutes',
-    route_coordinates JSON COMMENT 'Array of route coordinates',
+    gps_image VARCHAR(255) COMMENT 'URL to GPS image',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (ride_id) REFERENCES rides(ride_id) ON DELETE CASCADE
 );
@@ -124,12 +117,12 @@ INSERT INTO vehicles (driver_id, type, plate_number) VALUES
 (5, 'Bike', 'XYZ-456'),
 (6, 'SUV', 'LMN-789');
 
--- Insert Rides with coordinates
-INSERT INTO rides (customer_id, driver_id, pickup_location, dropoff_location, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, status, fare, start_time, end_time) 
+-- Insert Rides
+INSERT INTO rides (customer_id, driver_id, pickup_location, dropoff_location, status, fare, start_time, end_time) 
 VALUES 
-(1, 4, 'Location A', 'Location B', 10.8231, 106.6297, 10.7831, 106.6997, 'Completed', 10.5, NOW() - INTERVAL 1 DAY, NOW() - INTERVAL 1 DAY),
-(2, 5, 'Location C', 'Location D', 10.8231, 106.6297, 10.7831, 106.6997, 'In Progress', NULL, NOW(), NULL),
-(3, 6, 'Location E', 'Location F', 10.8231, 106.6297, 10.7831, 106.6997, 'Pending', NULL, NULL, NULL);
+(1, 4, 'Location A', 'Location B', 'Completed', 10.5, NOW() - INTERVAL 1 DAY, NOW() - INTERVAL 1 DAY),
+(2, 5, 'Location C', 'Location D', 'Ongoing', NULL, NOW(), NULL),
+(3, 6, 'Location E', 'Location F', 'Pending', NULL, NULL, NULL);
 
 -- Insert Payments
 INSERT INTO payments (ride_id, amount, status, payment_time) VALUES 
@@ -146,9 +139,9 @@ INSERT INTO notifications (user_id, message, is_read, created_at) VALUES
 (3, 'Your ride request is still pending.', TRUE, NOW() - INTERVAL 1 HOUR),
 (4, 'New ride request received.', FALSE, NOW());
 
--- Insert GPS Tracking Data with coordinates
-INSERT INTO gps_tracking (ride_id, driver_lat, driver_lng, eta, route_coordinates, updated_at) 
+-- Insert GPS Tracking Data
+INSERT INTO gps_tracking (ride_id, eta, gps_image, updated_at) 
 VALUES 
-(1, 10.8231, 106.6297, 15, '[[10.8231, 106.6297], [10.7831, 106.6997]]', NOW() - INTERVAL 1 DAY),
-(2, 10.8231, 106.6297, 10, '[[10.8231, 106.6297], [10.7831, 106.6997]]', NOW()),
-(3, 10.8231, 106.6297, 20, '[[10.8231, 106.6297], [10.7831, 106.6997]]', NOW());
+(1, 15, 'https://example.com/gps1.png', NOW() - INTERVAL 1 DAY),
+(2, 10, 'https://example.com/gps2.png', NOW()),
+(3, 20, 'https://example.com/gps3.png', NOW());
