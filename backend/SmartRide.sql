@@ -1,4 +1,3 @@
---test
 -- Create Database
 CREATE DATABASE smartride;
 USE smartride;

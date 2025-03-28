@@ -1,68 +1,74 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Swal from "sweetalert2";
 import "animate.css";
+import { useNavigate } from "react-router-dom";
 import Topbar from "../components/Topbar";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import { userService } from "../services/api";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("customer");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user"));
-    const step = parseInt(localStorage.getItem("trackingStep") || "0");
-    const booking = JSON.parse(localStorage.getItem("latestBooking"));
+  const hashPassword = async (password) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
 
-    if (user) {
-      if (booking && !booking.paid) {
-        if (step < 4) {
-          alert("Ride in progress. Please finish tracking before booking a new ride.");
-          window.location.href = "/track";
-        } else if (step === 4) {
-          alert("You haven’t completed payment for your last ride.");
-          window.location.href = "/payment";
-        }
-      } else {
-        if (user.role === "admin") window.location.href = "/admin-dashboard";
-        else if (user.role === "driver") window.location.href = "/driver-dashboard";
-        else window.location.href = "/customer-dashboard";
-      }
-    }
-  }, []);
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setIsLoading(true);
 
-    const users = JSON.parse(localStorage.getItem("users")) || [];
-    const matchedUser = users.find(
-      (user) =>
-        user.email.toLowerCase() === email.toLowerCase() &&
-        user.password === password &&
-        user.role === role
-    );
+    try {
+      // Get all users to find matching credentials
+      const users = await userService.getUsers();
+      const hashedPassword = await hashPassword(password);
+      const user = users.find(u => 
+        u.email === email && 
+        u.password_hash === hashedPassword && 
+        u.role === role
+      );
 
-    if (!matchedUser) {
-      setError("Invalid email, password, or role.");
-      return;
+      if (!user) {
+        setError("Invalid credentials or role mismatch");
+        setIsLoading(false);
+        return;
+      }
+
+      // Store user data in both localStorage and sessionStorage for persistence
+      const userData = JSON.stringify(user);
+      localStorage.setItem('user', userData);
+      sessionStorage.setItem('user', userData);
+
+      Swal.fire({
+        icon: "success",
+        title: "Login Successful",
+        text: `Welcome back, ${user.email}`,
+        timer: 1500,
+        showConfirmButton: false,
+      }).then(() => {
+        // Pass user data through navigation state
+        if (role === "driver") {
+          navigate("/driver-dashboard", { state: { user }, replace: true });
+        } else {
+          navigate("/customer-dashboard", { state: { user }, replace: true });
+        }
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      setError(error.detail || "Login failed. Please check your credentials.");
+    } finally {
+      setIsLoading(false);
     }
-
-    localStorage.setItem("user", JSON.stringify(matchedUser));
-
-    Swal.fire({
-      icon: "success",
-      title: "Login Successful",
-      text: `Welcome back, ${matchedUser.fullname || matchedUser.email}`,
-      timer: 1500,
-      showConfirmButton: false,
-    }).then(() => {
-      if (role === "admin") window.location.href = "/admin-dashboard";
-      else if (role === "driver") window.location.href = "/driver-dashboard";
-      else window.location.href = "/customer-dashboard";
-    });
   };
 
   return (
@@ -101,6 +107,7 @@ const Login = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={isLoading}
                   />
                 </div>
                 <div className="mb-3">
@@ -111,6 +118,7 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    disabled={isLoading}
                   />
                 </div>
                 <div className="mb-3">
@@ -120,14 +128,27 @@ const Login = () => {
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
                     required
+                    disabled={isLoading}
                   >
                     <option value="customer">Customer</option>
                     <option value="driver">Driver</option>
-                    <option value="admin">Admin</option>
                   </select>
                 </div>
                 {error && <div className="text-danger mb-3">{error}</div>}
-                <button type="submit" className="btn btn-primary w-100">Login</button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary w-100"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Logging in...
+                    </>
+                  ) : (
+                    "Login"
+                  )}
+                </button>
               </form>
               <p className="mt-3 text-center">
                 Don't have an account? <a href="/register">Register here</a>

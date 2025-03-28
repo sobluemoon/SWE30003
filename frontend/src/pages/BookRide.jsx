@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef } from "react";
 import Swal from "sweetalert2";
 import "animate.css";
+import { useNavigate } from "react-router-dom";
 import Topbar from "../components/Topbar";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import { rideService, gpsService, driverService } from "../services/api";
 
 const BookRide = () => {
   const [user, setUser] = useState(null);
@@ -17,8 +19,12 @@ const BookRide = () => {
   const [dropoffSuggestions, setDropoffSuggestions] = useState([]);
   const [showPickupSuggestions, setShowPickupSuggestions] = useState(false);
   const [showDropoffSuggestions, setShowDropoffSuggestions] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [pickupCoords, setPickupCoords] = useState(null);
+  const [dropoffCoords, setDropoffCoords] = useState(null);
   const pickupRef = useRef(null);
   const dropoffRef = useRef(null);
+  const navigate = useNavigate();
 
   const pricing = {
     bike: { fare: 5, eta: "5-10 mins" },
@@ -84,11 +90,15 @@ const BookRide = () => {
   // Handle suggestion selection
   const handleSuggestionSelect = (suggestion, isPickup) => {
     const displayName = suggestion.display_name;
+    const coords = [parseFloat(suggestion.lat), parseFloat(suggestion.lon)];
+
     if (isPickup) {
       setPickup(displayName);
+      setPickupCoords(coords);
       setShowPickupSuggestions(false);
     } else {
       setDropoff(displayName);
+      setDropoffCoords(coords);
       setShowDropoffSuggestions(false);
     }
   };
@@ -110,41 +120,13 @@ const BookRide = () => {
 
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
-    const existingBooking = JSON.parse(localStorage.getItem("latestBooking"));
 
     if (!storedUser || storedUser.role !== "customer") {
-      window.location.href = "/login";
+      navigate("/login");
     } else {
       setUser(storedUser);
     }
-
-    if (existingBooking && existingBooking.userEmail === storedUser?.email) {
-      if (!existingBooking.paid) {
-        const trackingStep = parseInt(localStorage.getItem("trackingStep") || 0);
-        if (trackingStep < 4) {
-          Swal.fire({
-            icon: "info",
-            title: "Ride In Progress",
-            text: "You already have a ride in progress. Please complete it before booking a new one.",
-            confirmButtonText: "Track Ride",
-            confirmButtonColor: "#3085d6",
-          }).then(() => {
-            window.location.href = "/track";
-          });
-        } else {
-          Swal.fire({
-            icon: "info",
-            title: "Pending Payment",
-            text: "Please complete your payment before booking another ride.",
-            confirmButtonText: "Proceed to Payment",
-            confirmButtonColor: "#3085d6",
-          }).then(() => {
-            window.location.href = "/payment";
-          });
-        }
-      }
-    }
-  }, []);
+  }, [navigate]);
 
   const handleRideTypeChange = (value) => {
     setRideType(value);
@@ -157,46 +139,110 @@ const BookRide = () => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    
     if (!rideType || !paymentMethod || !pickup || !dropoff) {
       Swal.fire("Missing Info", "Please fill in all fields.", "warning");
       return;
     }
 
-    const ride = {
-      pickup,
-      dropoff,
-      rideType,
-      paymentMethod,
-      fare: `$${pricing[rideType].fare.toFixed(2)}`,
-      datetime: new Date().toLocaleString(),
-      driver: "Assigned Soon",
-      paid: false,
-      feedback: null,
-      rating: null,
-      userEmail: user.email,
-    };
+    if (!pickupCoords || !dropoffCoords) {
+      Swal.fire("Location Error", "Please select valid pickup and dropoff locations from the suggestions.", "warning");
+      return;
+    }
 
-    const history = JSON.parse(localStorage.getItem("rideHistory") || "[]");
-    history.unshift(ride);
-    localStorage.setItem("rideHistory", JSON.stringify(history));
-    localStorage.setItem("latestBooking", JSON.stringify(ride));
-    localStorage.setItem("trackingStep", 0);
+    setIsLoading(true);
 
-    Swal.fire({
-      icon: "success",
-      title: "Booking Confirmed!",
-      text: "Redirecting to your dashboard...",
-      confirmButtonText: "OK",
-    }).then(() => {
-      window.location.href = "/customer-dashboard";
-    });    
+    try {
+      // Get available drivers
+      const availableDrivers = await driverService.getAvailableDrivers();
+      if (!availableDrivers || availableDrivers.length === 0) {
+        throw new Error("No available drivers at the moment. Please try again later.");
+      }
+
+      // Select the first available driver
+      const selectedDriver = availableDrivers[0];
+
+      // Create ride in backend
+      const rideData = {
+        customer_id: user.user_id,
+        driver_id: selectedDriver.driver_id,
+        pickup_location: pickup,
+        dropoff_location: dropoff
+      };
+
+      const response = await rideService.createRide(rideData);
+      
+      if (!response || !response.ride_id) {
+        throw new Error("Failed to create ride. Please try again.");
+      }
+
+      // Save ride information to local storage for UI flow
+      const ride = {
+        ride_id: response.ride_id,
+        pickup,
+        dropoff,
+        rideType,
+        paymentMethod,
+        fare: `$${pricing[rideType].fare.toFixed(2)}`,
+        datetime: new Date().toLocaleString(),
+        driver: selectedDriver.email,
+        paid: false,
+        feedback: null,
+        rating: null,
+        userEmail: user.email,
+      };
+
+      const history = JSON.parse(localStorage.getItem("rideHistory") || "[]");
+      history.unshift(ride);
+      localStorage.setItem("rideHistory", JSON.stringify(history));
+      localStorage.setItem("latestBooking", JSON.stringify(ride));
+      localStorage.setItem("trackingStep", 0);
+
+      // Add initial GPS tracking
+      try {
+        await gpsService.updateGPSLocation({
+          ride_id: response.ride_id,
+          eta: 5,
+          gps_image: "initial_location.jpg"
+        });
+      } catch (error) {
+        console.error("Error setting initial GPS data:", error);
+        // Don't throw here, as the ride was created successfully
+      }
+
+      Swal.fire({
+        icon: "success",
+        title: "Booking Confirmed!",
+        text: "Redirecting to track your ride...",
+        confirmButtonText: "OK",
+      }).then(() => {
+        navigate("/track", { state: { ride } });
+      });
+    } catch (error) {
+      console.error("Ride booking error:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Booking Failed",
+        text: error.detail || error.message || "Could not complete your booking. Please try again.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const logout = () => {
-    localStorage.removeItem("user");
-    window.location.href = "/";
+    Swal.fire({
+      title: "Logging out",
+      text: "Please wait...",
+      showConfirmButton: false,
+      timer: 1000,
+      willClose: () => {
+        localStorage.removeItem("user");
+        navigate("/");
+      }
+    });
   };
 
   return (
@@ -245,6 +291,7 @@ const BookRide = () => {
                     onChange={handlePickupChange}
                     required
                     placeholder="Enter pickup location"
+                    disabled={isLoading}
                   />
                   {showPickupSuggestions && pickupSuggestions.length > 0 && (
                     <div className="suggestions-list">
@@ -269,6 +316,7 @@ const BookRide = () => {
                     onChange={handleDropoffChange}
                     required
                     placeholder="Enter drop-off location"
+                    disabled={isLoading}
                   />
                   {showDropoffSuggestions && dropoffSuggestions.length > 0 && (
                     <div className="suggestions-list">
@@ -291,6 +339,7 @@ const BookRide = () => {
                     value={rideType}
                     onChange={(e) => handleRideTypeChange(e.target.value)}
                     required
+                    disabled={isLoading}
                   >
                     <option value="">-- Select --</option>
                     <option value="bike">Bike</option>
@@ -305,6 +354,7 @@ const BookRide = () => {
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
                     required
+                    disabled={isLoading}
                   >
                     <option value="">-- Select Payment Method --</option>
                     <option value="cash">Cash</option>
@@ -336,14 +386,24 @@ const BookRide = () => {
                   <button
                     type="button"
                     className="btn btn-outline-secondary w-45"
-                    onClick={() =>
-                      (window.location.href = "/customer-dashboard")
-                    }
+                    onClick={() => navigate("/customer-dashboard")}
+                    disabled={isLoading}
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary w-45">
-                    Confirm Booking
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary w-45"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        Processing...
+                      </>
+                    ) : (
+                      "Confirm Booking"
+                    )}
                   </button>
                 </div>
               </form>

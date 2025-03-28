@@ -1,41 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Swal from "sweetalert2";
 import "animate.css";
+import { useNavigate } from "react-router-dom";
 import Topbar from "../components/Topbar";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import { userService } from "../services/api";
 
 const Register = () => {
-  const [fullname, setFullname] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState("customer");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user"));
-    const step = parseInt(localStorage.getItem("trackingStep") || "0");
-    const booking = JSON.parse(localStorage.getItem("latestBooking"));
-
-    if (user) {
-      if (booking && !booking.paid) {
-        if (step < 4) {
-          alert("Ride in progress. Please finish tracking before booking a new ride.");
-          window.location.href = "/track";
-        } else if (step === 4) {
-          alert("You haven’t completed payment for your last ride.");
-          window.location.href = "/payment";
-        }
-      } else {
-        if (user.role === "admin") window.location.href = "/admin-dashboard";
-        else if (user.role === "driver") window.location.href = "/driver-dashboard";
-        else window.location.href = "/customer-dashboard";
-      }
-    }
-  }, []);
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
@@ -44,32 +25,29 @@ const Register = () => {
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem("users")) || [];
-    const emailExists = users.some((user) => user.email === email.toLowerCase());
+    setIsLoading(true);
 
-    if (emailExists) {
-      setError("Email already registered.");
-      return;
+    try {
+      await userService.register({
+        email,
+        password,
+        role
+      });
+
+      Swal.fire({
+        icon: "success",
+        title: "Registration Successful!",
+        text: "You can now log in with your new account.",
+        confirmButtonText: "Go to Login",
+      }).then(() => {
+        navigate("/login");
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      setError(error.detail || "Registration failed. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    const newUser = {
-      fullname,
-      email: email.toLowerCase(),
-      password,
-      role,
-    };
-
-    users.push(newUser);
-    localStorage.setItem("users", JSON.stringify(users));
-
-    Swal.fire({
-      icon: "success",
-      title: "Registration Successful!",
-      text: "You can now log in with your new account.",
-      confirmButtonText: "Go to Login",
-    }).then(() => {
-      window.location.href = "/login";
-    });
   };
 
   return (
@@ -109,16 +87,6 @@ const Register = () => {
               <h2 className="text-center mb-4 text-primary">Create Account</h2>
               <form onSubmit={handleSubmit}>
                 <div className="mb-3">
-                  <label className="form-label">Full Name</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    required
-                    value={fullname}
-                    onChange={(e) => setFullname(e.target.value)}
-                  />
-                </div>
-                <div className="mb-3">
                   <label className="form-label">Email address</label>
                   <input
                     type="email"
@@ -126,6 +94,7 @@ const Register = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    disabled={isLoading}
                   />
                 </div>
                 <div className="mb-3">
@@ -136,6 +105,7 @@ const Register = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
                   />
                 </div>
                 <div className="mb-3">
@@ -146,6 +116,7 @@ const Register = () => {
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={isLoading}
                   />
                 </div>
                 <div className="mb-3">
@@ -155,14 +126,27 @@ const Register = () => {
                     required
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
+                    disabled={isLoading}
                   >
                     <option value="customer">Customer</option>
                     <option value="driver">Driver</option>
-                    <option value="admin">Admin</option>
                   </select>
                 </div>
                 {error && <div className="text-danger mb-3">{error}</div>}
-                <button type="submit" className="btn btn-primary w-100">Register</button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary w-100"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Registering...
+                    </>
+                  ) : (
+                    "Register"
+                  )}
+                </button>
               </form>
               <p className="mt-3 text-center">
                 Already have an account? <a href="/login">Login here</a>

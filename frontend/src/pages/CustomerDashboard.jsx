@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import "animate.css";
 import Topbar from "../components/Topbar";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import { rideService, userService } from "../services/api";
 
 const CustomerDashboard = () => {
   const [user, setUser] = useState(null);
@@ -12,40 +13,56 @@ const CustomerDashboard = () => {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showHistoryLink, setShowHistoryLink] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-    const latestBooking = JSON.parse(localStorage.getItem("latestBooking"));
-    const rideHistory = JSON.parse(localStorage.getItem("rideHistory") || "[]");
-    const step = parseInt(localStorage.getItem("trackingStep") || "0");
-
-    if (!storedUser || storedUser.role !== "customer") {
-      if (!storedUser) navigate("/login");
-      else if (storedUser.role === "admin") navigate("/admin-dashboard");
-      else navigate("/driver-dashboard");
+    // Get user from navigation state or sessionStorage
+    const userData = location.state?.user || JSON.parse(sessionStorage.getItem('user'));
+    
+    if (!userData || userData.role !== "customer") {
+      navigate("/login");
       return;
     }
 
-    setUser(storedUser);
+    setUser(userData);
 
-    if (latestBooking && latestBooking.userEmail === storedUser.email) {
-      if (!latestBooking.paid) {
-        if (step < 5) {
+    // Check for active rides and ride history
+    const checkRides = async () => {
+      try {
+        const rides = await rideService.getUserRides(userData.user_id, "customer");
+        
+        // Check for active ride
+        const activeRide = rides.find(ride => ride.status === "Ongoing");
+        if (activeRide) {
           setShowTrack(true);
-        } else if (step === 5) {
+        }
+
+        // Check for completed ride without feedback
+        const completedRide = rides.find(ride => 
+          ride.status === "Completed" && 
+          !ride.feedback
+        );
+        if (completedRide) {
           setShowFeedback(true);
         }
-      } else if (latestBooking.paid && !latestBooking.feedback) {
-        setShowFeedback(true);
-      }
-    }
 
-    if (rideHistory.length > 0) {
-      setShowHistoryLink(true);
-    }
-  }, [navigate]);
+        // Show history if there are any rides
+        if (rides.length > 0) {
+          setShowHistoryLink(true);
+        }
+      } catch (error) {
+        console.error("Error fetching rides:", error);
+      }
+    };
+
+    checkRides();
+  }, [navigate, location]);
 
   const logout = () => {
+    // Clear user data from both storage locations
+    localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
+    
     Swal.fire({
       icon: "success",
       title: "Logged Out",
@@ -53,68 +70,55 @@ const CustomerDashboard = () => {
       timer: 1500,
       showConfirmButton: false,
     }).then(() => {
-      localStorage.removeItem("user");
       navigate("/");
     });
   };
 
-  const handleBookClick = () => {
-    const latestBooking = JSON.parse(localStorage.getItem("latestBooking"));
-    const step = parseInt(localStorage.getItem("trackingStep") || "0");
-
-    if (latestBooking && latestBooking.userEmail === user.email && !latestBooking.paid) {
-      if (step < 5) {
+  const handleBookClick = async () => {
+    try {
+      const rides = await rideService.getUserRides(user.user_id, "customer");
+      const activeRide = rides.find(ride => ride.status === "Ongoing");
+      
+      if (activeRide) {
         Swal.fire({
           icon: "info",
           title: "Ride In Progress",
           text: "Please complete your current ride before booking another.",
           confirmButtonText: "Track Ride",
         }).then(() => {
-          navigate("/track");
-        });
-        return;
-      } else if (step === 5) {
-        Swal.fire({
-          icon: "info",
-          title: "Pending Payment",
-          text: "Please complete your payment before booking another ride.",
-          confirmButtonText: "Go to Payment",
-        }).then(() => {
-          navigate("/payment");
+          navigate("/track", { state: { ride: activeRide } });
         });
         return;
       }
-    }
 
-    navigate("/book");
+      navigate("/book", { state: { user } });
+    } catch (error) {
+      console.error("Error checking rides:", error);
+      navigate("/book", { state: { user } });
+    }
   };
 
-  const handleFeedbackClick = () => {
-    const latestBooking = JSON.parse(localStorage.getItem("latestBooking"));
-    const step = parseInt(localStorage.getItem("trackingStep") || "0");
+  const handleFeedbackClick = async () => {
+    try {
+      const rides = await rideService.getUserRides(user.user_id, "customer");
+      const completedRide = rides.find(ride => 
+        ride.status === "Completed" && 
+        !ride.feedback
+      );
 
-    if (!latestBooking || latestBooking.userEmail !== user.email) {
-      Swal.fire({
-        icon: "warning",
-        title: "No Recent Ride",
-        text: "Please complete a ride before giving feedback.",
-      });
-      return;
+      if (!completedRide) {
+        Swal.fire({
+          icon: "warning",
+          title: "No Recent Ride",
+          text: "Please complete a ride before giving feedback.",
+        });
+        return;
+      }
+
+      navigate("/feedback", { state: { ride: completedRide, user } });
+    } catch (error) {
+      console.error("Error checking rides:", error);
     }
-
-    if (!latestBooking.paid || step < 5) {
-      Swal.fire({
-        icon: "info",
-        title: "Pending Payment",
-        text: "Please complete your payment before leaving feedback.",
-        confirmButtonText: "Go to Payment",
-      }).then(() => {
-        navigate("/payment");
-      });
-      return;
-    }
-
-    navigate("/feedback");
   };
 
   return (
@@ -142,7 +146,7 @@ const CustomerDashboard = () => {
         ></div>
         <div className="container text-center" style={{ position: "relative", zIndex: 2 }}>
           <h1 className="display-4 text-white fw-bold">
-            Welcome, {user ? user.fullname || user.email.split("@")[0] : ""}!
+            Welcome, {user ? user.email.split("@")[0] : ""}!
           </h1>
           <p className="lead">Manage your SmartRide experience here.</p>
         </div>
