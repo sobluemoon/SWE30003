@@ -71,17 +71,73 @@ export const rideService = {
       const response = await api.get(`/rides/user/${userId}?role=${role}`);
       return response.data;
     } catch (error) {
+      console.error(`Error getting rides for user ${userId}:`, error);
       throw error?.response?.data || { detail: 'Failed to fetch user rides' };
     }
   },
   
   // Update ride status
-  updateRideStatus: async (rideId, status) => {
+  updateRideStatus: async (rideId, status, driverId = null) => {
     try {
-      const response = await api.put(`/rides/${rideId}/status`, { status });
+      // Ensure rideId is a number to prevent string concatenation issues
+      const parsedRideId = parseInt(rideId, 10);
+      
+      console.log(`Updating ride ${parsedRideId} status to ${status}`);
+      
+      // Use query parameters instead of body for FastAPI endpoint
+      const response = await api.put(`/rides/${parsedRideId}/status?status=${status}`);
+      console.log(`Ride ${parsedRideId} status updated successfully:`, response.data);
       return response.data;
     } catch (error) {
+      console.error(`Error updating ride ${rideId} status to ${status}:`, error);
+      console.error('Full error details:', error?.response?.data || error.message || error);
       throw error?.response?.data || { detail: 'Failed to update ride status' };
+    }
+  },
+  
+  // Get ride status
+  getRideStatus: async (rideId) => {
+    try {
+      console.log(`Getting status for ride ID: ${rideId}`);
+      const response = await api.get(`/rides/${rideId}/status`);
+      console.log(`Ride status response:`, response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error getting ride status for ID ${rideId}:`, error);
+      // Return a formatted error response
+      if (error.response) {
+        throw error.response.data || "Failed to fetch ride status";
+      } else {
+        throw "Network error while fetching ride status";
+      }
+    }
+  },
+  
+  // Get all drivers (added for BookRide)
+  getDrivers: async () => {
+    try {
+      const response = await api.get('/drivers/');
+      return response.data;
+    } catch (error) {
+      throw error?.response?.data || { detail: 'Failed to fetch drivers' };
+    }
+  },
+
+  // Complete a ride
+  completeRide: async (rideId) => {
+    try {
+      // Ensure rideId is a number
+      const parsedRideId = parseInt(rideId, 10);
+      
+      console.log(`Completing ride ${parsedRideId}`);
+      
+      // Update ride status to Completed with end time
+      const response = await api.put(`/rides/${parsedRideId}/status?status=Completed`);
+      console.log(`Ride ${parsedRideId} completed successfully:`, response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error completing ride ${rideId}:`, error);
+      throw error?.response?.data || { detail: 'Failed to complete ride' };
     }
   }
 };
@@ -154,6 +210,97 @@ export const gpsService = {
       return response.data;
     } catch (error) {
       throw error?.response?.data || { detail: 'Failed to fetch GPS tracking data' };
+    }
+  }
+};
+
+// Notification services for driver-customer interactions
+export const notificationService = {
+  // Get pending ride requests for a driver
+  getPendingRideRequests: async (driverId) => {
+    try {
+      const response = await api.get(`/rides/pending/${driverId}`);
+      return response.data;
+    } catch (error) {
+      throw error?.response?.data || { detail: 'Failed to fetch pending ride requests' };
+    }
+  },
+  
+  // Accept a ride request
+  acceptRideRequest: async (rideId, driverId) => {
+    try {
+      console.log(`Accepting ride ${rideId} with driver ${driverId} - using accept endpoint`);
+      
+      // Ensure IDs are numbers
+      const parsedRideId = parseInt(rideId, 10);
+      const parsedDriverId = parseInt(driverId, 10);
+      
+      // Try to use the specific accept endpoint first
+      const response = await api.put(`/rides/${parsedRideId}/accept`, { driver_id: parsedDriverId });
+      console.log("Ride accepted successfully via accept endpoint:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error with accept endpoint:', error?.response?.data || error.message || error);
+      
+      // Fallback to updating the ride status directly
+      try {
+        console.log(`Accepting ride ${rideId} with driver ${driverId} - using status update fallback`);
+        
+        // Ensure IDs are numbers
+        const parsedRideId = parseInt(rideId, 10);
+        
+        // Use query parameters for status update
+        const response = await api.put(`/rides/${parsedRideId}/status?status=Ongoing`);
+        console.log("Ride accepted successfully via status update:", response.data);
+        return response.data;
+      } catch (fallbackError) {
+        console.error('Error with fallback status update:', fallbackError?.response?.data || fallbackError.message || fallbackError);
+        throw fallbackError?.response?.data || { detail: 'Failed to accept ride request' };
+      }
+    }
+  },
+  
+  // Reject a ride request
+  rejectRideRequest: async (rideId, driverId) => {
+    try {
+      console.log(`Rejecting ride ${rideId} with driver ${driverId} - using reject endpoint`);
+      
+      // Ensure IDs are numbers
+      const parsedRideId = parseInt(rideId, 10);
+      const parsedDriverId = parseInt(driverId, 10);
+      
+      // Try to use the specific reject endpoint first
+      const response = await api.put(`/rides/${parsedRideId}/reject`, { driver_id: parsedDriverId });
+      console.log("Ride rejected successfully via reject endpoint:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error with reject endpoint:', error?.response?.data || error.message || error);
+      
+      // Fallback to updating the ride status directly
+      try {
+        console.log(`Rejecting ride ${rideId} with driver ${driverId} - using status update fallback`);
+        
+        // Ensure IDs are numbers
+        const parsedRideId = parseInt(rideId, 10);
+        
+        // Use query parameters for status update
+        const response = await api.put(`/rides/${parsedRideId}/status?status=Cancelled`);
+        console.log("Ride rejected successfully via status update:", response.data);
+        return response.data;
+      } catch (fallbackError) {
+        console.error('Error with fallback status update:', fallbackError?.response?.data || fallbackError.message || fallbackError);
+        throw fallbackError?.response?.data || { detail: 'Failed to reject ride request' };
+      }
+    }
+  },
+  
+  // Get ride status for a customer
+  getRideStatus: async (rideId) => {
+    try {
+      const response = await api.get(`/rides/${rideId}/status`);
+      return response.data;
+    } catch (error) {
+      throw error?.response?.data || { detail: 'Failed to fetch ride status' };
     }
   }
 }; 
