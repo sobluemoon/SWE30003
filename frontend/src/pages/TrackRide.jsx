@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useReducer, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import "animate.css";
@@ -17,9 +17,24 @@ const TrackRide = () => {
   const [driverInfo, setDriverInfo] = useState(null);
   const [coordinates, setCoordinates] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isMapLoading, setIsMapLoading] = useState(false);
   const [error, setError] = useState(null);
   const [notifiedPickup, setNotifiedPickup] = useState(false);
+  const [notifiedArrival, setNotifiedArrival] = useState(false);
   const [completedSteps, setCompletedSteps] = useState([]);
+  // Add state to track if step transitions are in progress
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  // Add initialized state to prevent race conditions during mount
+  const [initialized, setInitialized] = useState(false);
+  
+  // Add a useReducer to force rerenders when needed
+  const [, forceUpdate] = useReducer(x => x + 1, 0);
+  
+  // Track the last update time to prevent too frequent updates
+  const lastUpdateTime = useRef(0);
+  // Track current step in a ref for access in callbacks
+  const currentStepRef = useRef(0);
+  
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const routeLineRef = useRef(null);
@@ -27,13 +42,109 @@ const TrackRide = () => {
   const pickupCheckInterval = useRef(null);
   const navigate = useNavigate();
 
+  // Add last timestamp check ref to detect changes between polling intervals
+  const lastTimestampCheck = useRef(0);
+
   const steps = [
-    { id: "step1", label: "Driver assigned to your ride", icon: "fas fa-user-check" },
-    { id: "step2", label: "Driver on the way (ETA: 5 mins)", icon: "fas fa-car-side" },
-    { id: "step3", label: "Passenger picked up", icon: "fas fa-user-check" },
-    { id: "step4", label: "On the way to destination...", icon: "fas fa-route" },
-    { id: "step5", label: "Drop-off complete", icon: "fas fa-flag-checkered" },
+    { id: "step1", label: "Driver accepted your ride", icon: "fas fa-user-check" },
+    { id: "step2", label: "Driver on the way to pickup", icon: "fas fa-car-side" },
+    { id: "step3", label: "Driver arrived at pickup", icon: "fas fa-map-marker-alt" },
+    { id: "step4", label: "Passenger picked up", icon: "fas fa-user-check" },
+    { id: "step5", label: "On the way to destination", icon: "fas fa-route" },
+    { id: "step6", label: "Drop-off complete", icon: "fas fa-flag-checkered" },
   ];
+
+  // Function to update step with forced re-render (wrapped in useCallback)
+  const updateStep = useCallback((newStep, newCompletedSteps) => {
+    // Perform sanity checks on the new step value
+    if (newStep < 0 || newStep >= steps.length) {
+      console.error(`Invalid step value: ${newStep}. Must be between 0 and ${steps.length - 1}`);
+      return;
+    }
+    
+    // Check if we're already transitioning or if this update is too soon after the last one
+    const now = Date.now();
+    if (isTransitioning || (now - lastUpdateTime.current < 500)) {
+      console.log(`Skipping update to step ${newStep} - already transitioning or too soon`);
+      return;
+    }
+    
+    // If step hasn't changed, just ensure completedSteps is updated
+    if (currentStepRef.current === newStep) {
+      if (newCompletedSteps) {
+        setCompletedSteps(prev => {
+          // Create new array only if changes are needed
+          if (newCompletedSteps.length === prev.length && 
+              newCompletedSteps.every(step => prev.includes(step))) {
+            return prev;
+          }
+          return [...newCompletedSteps];
+        });
+      }
+      return;
+    }
+    
+    console.log(`Updating step from ${currentStepRef.current} to ${newStep} with force update`);
+    setIsTransitioning(true);
+    lastUpdateTime.current = now;
+    
+    // Update both state and ref
+    setStep(newStep);
+    currentStepRef.current = newStep;
+    
+    if (newCompletedSteps) {
+      setCompletedSteps([...newCompletedSteps]);
+    }
+    localStorage.setItem("trackingStep", newStep.toString());
+    
+    // Force a UI update
+    forceUpdate();
+    
+    // Reset transitioning flag after a short delay
+    setTimeout(() => {
+      setIsTransitioning(false);
+    }, 500); // Increased delay for better protection
+  }, [isTransitioning, steps.length]); // Removed step dependency to avoid stale closures
+
+  // Synchronize step state with ref
+  useEffect(() => {
+    currentStepRef.current = step;
+  }, [step]);
+
+  // Function to check and fix step mismatch with localStorage
+  const checkAndFixStepMismatch = useCallback(() => {
+    const storedStepStr = localStorage.getItem("trackingStep");
+    if (!storedStepStr) return;
+    
+    const storedStep = parseInt(storedStepStr, 10);
+    if (isNaN(storedStep)) return;
+    
+    // If there's a mismatch between state and localStorage, fix it
+    if (storedStep !== currentStepRef.current) {
+      console.log(`Step mismatch detected: state=${currentStepRef.current}, localStorage=${storedStep}`);
+      
+      // If localStorage is ahead, update the state to match
+      if (storedStep > currentStepRef.current) {
+        console.log(`Fixing mismatch: Updating state to match localStorage (${storedStep})`);
+        
+        // Build completed steps array
+        const newCompletedSteps = [];
+        for (let i = 0; i < storedStep; i++) {
+          newCompletedSteps.push(i);
+        }
+        
+        // Direct state update to avoid animation
+        setStep(storedStep);
+        currentStepRef.current = storedStep;
+        setCompletedSteps(newCompletedSteps);
+      } 
+      // If state is ahead, update localStorage to match
+      else {
+        console.log(`Fixing mismatch: Updating localStorage to match state (${currentStepRef.current})`);
+        localStorage.setItem("trackingStep", currentStepRef.current.toString());
+      }
+    }
+  }, []);
 
   // Function to geocode address to coordinates
   const geocodeAddress = async (address) => {
@@ -194,8 +305,7 @@ const TrackRide = () => {
     if (status === "Ongoing" && !driverAccepted) {
       console.log("Ride now ONGOING - driver has accepted");
       setDriverAccepted(true);
-      setStep(1);
-      setCompletedSteps([0]); // Mark step 0 (driver assigned) as completed
+      updateStep(1, [0]); // Driver accepted your ride
       localStorage.setItem("trackingStep", "1");
       
       // Update the booking information with the driver details
@@ -212,11 +322,9 @@ const TrackRide = () => {
       // Start checking for driver pickup confirmation
       startPickupCheck(rideId);
       
-    } else if (status === "Completed" && step < 4) {
+    } else if (status === "Completed" && step < 6) {
       console.log("Ride now COMPLETED");
-      setStep(4);
-      setCompletedSteps([0, 1, 2, 3]); // Mark all previous steps as completed
-      localStorage.setItem("trackingStep", "4");
+      updateStep(6, [0, 1, 2, 3, 4, 5]); // Drop-off complete
     } else if (status === "Cancelled") {
       console.log("Ride CANCELLED");
       // Clear interval since ride is cancelled
@@ -238,77 +346,123 @@ const TrackRide = () => {
     }
   };
 
-  // Function to check for driver pickup confirmation
+  // Function to start checking for pickup confirmation
   const startPickupCheck = (rideId) => {
+    // Clear any existing interval
     if (pickupCheckInterval.current) {
       clearInterval(pickupCheckInterval.current);
     }
     
     console.log(`Starting pickup check for ride ID: ${rideId}`);
     
-    // Ensure rideId is a number
-    const parsedRideId = parseInt(rideId, 10);
+    // Check immediately on start
+    checkServerStatus();
     
-    if (isNaN(parsedRideId)) {
-      console.error(`Invalid ride ID: ${rideId}`);
-      return;
-    }
+    // Start a new interval
+    pickupCheckInterval.current = setInterval(checkServerStatus, 2000); // Check every 2 seconds
     
-    // Function to check pickup status
-    const checkPickup = () => {
-      if (step >= 3) {
-        // If we're already at or past the pickup step, no need to keep checking
-        clearInterval(pickupCheckInterval.current);
-        pickupCheckInterval.current = null;
-        return;
-      }
-      
-      const pickupStatus = localStorage.getItem(`ride_${parsedRideId}_pickup_status`);
-      console.log(`Checking pickup status for ride ${parsedRideId}:`, pickupStatus);
-      
-      if (pickupStatus === 'true' && !notifiedPickup) {
-        console.log(`Pickup confirmed for ride ${parsedRideId}!`);
+    // New function to check status directly from the server (works across browsers)
+    async function checkServerStatus() {
+      try {
+        // Get detailed status from server
+        const detailedStatus = await rideService.getDetailedRideStatus(rideId);
+        console.log("Detailed status from server:", detailedStatus);
         
-        // Clear all intervals to prevent race conditions
-        if (pickupCheckInterval.current) {
-          clearInterval(pickupCheckInterval.current);
-          pickupCheckInterval.current = null;
+        // Extract the relevant status information
+        const driverArrived = detailedStatus.driver_arrived;
+        const passengerPickedUp = detailedStatus.passenger_picked_up;
+        const rideStatus = detailedStatus.status;
+        
+        console.log(`SERVER STATUS: driverArrived=${driverArrived}, passengerPickedUp=${passengerPickedUp}, rideStatus=${rideStatus}, currentStep=${step}`);
+        
+        // Process driver arrival status
+        if (driverArrived && step < 3) {
+          console.log("SERVER UPDATE: Driver has arrived at pickup location");
+          updateStep(3, [0, 1, 2]);
+          
+          // Show notification if not previously shown
+          if (!notifiedArrival) {
+            Swal.fire({
+              icon: "info",
+              title: "Driver Has Arrived",
+              text: "Your driver has arrived at the pickup location.",
+              timer: 4000,
+              timerProgressBar: true,
+              showConfirmButton: false,
+            });
+            setNotifiedArrival(true);
+          }
         }
         
-        // Immediately make a visual change by first updating to step 2 (passenger picked up)
-        // Mark steps 0 and 1 as completed
-        setCompletedSteps([0, 1]);
-        setStep(2);
+        // Process passenger pickup status
+        if (passengerPickedUp && step < 4) {
+          console.log("SERVER UPDATE: Passenger has been picked up");
+          updateStep(4, [0, 1, 2, 3]);
+          
+          // Show notification if not previously shown
+          if (!notifiedPickup) {
+            Swal.fire({
+              icon: "success",
+              title: "Pickup Confirmed",
+              text: "The driver has confirmed your pickup. You're on your way to your destination!",
+              timer: 4000,
+              timerProgressBar: true,
+              showConfirmButton: false,
+            });
+            setNotifiedPickup(true);
+          }
+          
+          // After a short delay, move to step 5 (On the way to destination)
+          setTimeout(() => {
+            console.log("Moving to step 5 - On the way to destination");
+            updateStep(5, [0, 1, 2, 3, 4]);
+          }, 3000);
+        }
         
-        // Show notification to customer
-        Swal.fire({
-          icon: 'success',
-          title: 'Driver Has Arrived!',
-          text: 'Your driver has confirmed pickup and is taking you to your destination.',
-          timer: 4000,
-          showConfirmButton: false,
-          position: 'top-end',
-          toast: true
-        });
+        // Process ride completion
+        if (rideStatus === "Completed" && step < 6) {
+          console.log("SERVER UPDATE: Ride has been completed");
+          updateStep(6, [0, 1, 2, 3, 4, 5]);
+          
+          // Clear interval since we're done
+          if (pickupCheckInterval.current) {
+            clearInterval(pickupCheckInterval.current);
+            pickupCheckInterval.current = null;
+          }
+          
+          // Show completion notification
+          setTimeout(() => {
+            Swal.fire({
+              icon: "success",
+              title: "Ride Completed",
+              text: "Your ride has been completed. Thank you for riding with us!",
+              confirmButtonText: "Rate Your Trip",
+              showCancelButton: true,
+              cancelButtonText: "Later"
+            }).then((result) => {
+              if (result.isConfirmed) {
+                // Navigate to feedback page
+                navigate("/feedback", { state: { ride: booking } });
+              }
+            });
+          }, 1000);
+        }
         
-        // Immediately after (without delay), move to step 3 (on the way to destination)
-        // This allows the user to see step 2 highlighted briefly for visual feedback
-        setTimeout(() => {
-          // Force update all previous steps as completed
-          setCompletedSteps([0, 1, 2]); // "Driver assigned", "Driver on the way", and "Passenger picked up"
-          // Set the step to "On the way to destination"
-          setStep(3);
-          localStorage.setItem("trackingStep", "3");
-          setNotifiedPickup(true);
-        }, 300); // Just enough delay for visual feedback, but practically immediate
+        // Also update local storage with server status for local UI consistency
+        if (driverArrived) {
+          localStorage.setItem(`ride_${rideId}_driver_arrived_status`, 'true');
+          localStorage.setItem(`driver_arrived_${rideId}`, 'true');
+        }
+        
+        if (passengerPickedUp) {
+          localStorage.setItem(`ride_${rideId}_pickup_status`, 'true');
+          localStorage.setItem(`passenger_pickup_${rideId}`, 'true');
+        }
+        
+      } catch (error) {
+        console.error("Error checking server status:", error);
       }
-    };
-    
-    // Run check immediately
-    checkPickup();
-    
-    // Then set up interval - check MUCH more frequently (100ms) to ensure we catch the change immediately
-    pickupCheckInterval.current = setInterval(checkPickup, 100); // Check 10 times per second
+    }
   };
 
   // Check if the user has an active ride
@@ -343,8 +497,11 @@ const TrackRide = () => {
     }
   };
 
-  // Enhanced validation when component loads
+  // Enhanced validation when component loads - MAIN INIT FUNCTION
   useEffect(() => {
+    // Skip if already initialized
+    if (initialized) return;
+    
     const storedUser = JSON.parse(localStorage.getItem("user"));
     const storedBooking = JSON.parse(localStorage.getItem("latestBooking"));
     const storedStep = parseInt(localStorage.getItem("trackingStep") || "0");
@@ -357,56 +514,50 @@ const TrackRide = () => {
     setUser(storedUser);
     console.log("TrackRide - Retrieved stored booking:", storedBooking);
 
-    // Fast polling for pickup status regardless of other checks
-    let pickupFastPoll = null;
-    
-    if (storedBooking && storedBooking.ride_id) {
-      // Setup immediate polling for pickup status (this is redundant but ensures maximum responsiveness)
-      const rideId = storedBooking.ride_id;
-      console.log(`Setting up fast poll for pickup status on ride ${rideId}`);
-      
-      const checkPickupFast = () => {
-        const pickupStatus = localStorage.getItem(`ride_${rideId}_pickup_status`);
-        if (pickupStatus === 'true') {
-          console.log(`FAST POLL: Detected pickup confirmation for ride ${rideId}`);
-          // Force pickup notification on next render cycle
-          localStorage.setItem("trackingStep", "2");
-          // Force page refresh to ensure all state is updated
-          window.location.reload();
-        }
-      };
-      
-      // Check 10 times per second
-      pickupFastPoll = setInterval(checkPickupFast, 100);
-    }
-
-    // First set what we have from local storage
+    // Initialize with stored data
     if (storedBooking && storedBooking.ride_id) {
       setBooking(storedBooking);
       
-      // Check if pickup was already confirmed
+      // Check for all statuses immediately
       const pickupStatus = localStorage.getItem(`ride_${storedBooking.ride_id}_pickup_status`);
-      console.log(`Initial check - Pickup status for ride ${storedBooking.ride_id}:`, pickupStatus);
+      const driverArrivedStatus = localStorage.getItem(`ride_${storedBooking.ride_id}_driver_arrived_status`);
+      console.log(`Initial status check - Pickup: ${pickupStatus}, Driver arrived: ${driverArrivedStatus}, Stored step: ${storedStep}`);
       
-      // If pickup was confirmed, immediately set to step 3 and mark previous steps as completed
-      if (pickupStatus === 'true') {
-        console.log("Pickup was already confirmed. Updating UI accordingly.");
-        // Mark all previous steps as completed
-        setCompletedSteps([0, 1, 2]);
-        setStep(3); // Set to "On the way to destination"
+      // Determine the current step based on all available information
+      let currentStep = storedStep;
+      let currentCompletedSteps = [];
+      
+      // Driver has arrived at pickup
+      if (driverArrivedStatus === 'true' && currentStep < 3) {
+        console.log("Init: Driver has arrived, setting to step 3");
+        currentStep = 3;
+        currentCompletedSteps = [0, 1, 2];
         localStorage.setItem("trackingStep", "3");
-        setNotifiedPickup(true);
-      } else {
-        // Otherwise, use the stored step
-        setStep(storedStep);
-        
-        // Initialize completedSteps based on the current step
-        const completed = [];
-        for (let i = 0; i < storedStep; i++) {
-          completed.push(i);
-        }
-        setCompletedSteps(completed);
+        // Mark that we've already notified about driver arrival
+        setNotifiedArrival(true);
       }
+      
+      // Passenger has been picked up
+      if (pickupStatus === 'true') {
+        console.log("Init: Pickup confirmed, setting to step 4/5");
+        if (currentStep < 5) {
+          currentStep = 5; // Jump straight to "On the way to destination"
+          currentCompletedSteps = [0, 1, 2, 3, 4];
+          localStorage.setItem("trackingStep", "5");
+          setNotifiedPickup(true);
+        }
+      } else {
+        // If no status was detected, use the stored step
+        for (let i = 0; i < currentStep; i++) {
+          currentCompletedSteps.push(i);
+        }
+      }
+      
+      // Apply the determined step - directly set state to avoid race conditions during init
+      setStep(currentStep);
+      currentStepRef.current = currentStep;
+      setCompletedSteps(currentCompletedSteps);
+      lastUpdateTime.current = Date.now();
 
       // If the booking has a driver ID and the status is "Ongoing", set driverAccepted to true
       if (storedBooking.status === "Ongoing" || (storedBooking.driver && storedBooking.driver !== "Assigned")) {
@@ -414,13 +565,16 @@ const TrackRide = () => {
       }
       
       // Start status check with what we have
-      console.log(`TrackRide - Starting status check for ride: ${storedBooking.ride_id}, current step: ${storedStep}, status: ${storedBooking.status}`);
+      console.log(`TrackRide - Starting status check for ride: ${storedBooking.ride_id}, current step: ${currentStep}, status: ${storedBooking.status}`);
       startStatusCheck(storedBooking.ride_id);
       
-      // If the ride is ongoing and we're not yet at step 3, start checking for pickup confirmation
+      // Start checking for pickup confirmation if needed
       if (storedBooking.status === "Ongoing" && !pickupStatus) {
         startPickupCheck(storedBooking.ride_id);
       }
+      
+      // Mark as initialized to prevent duplicate initialization
+      setInitialized(true);
     } else {
       // If no valid booking in local storage, check if user has an active ride
       const checkForRide = async () => {
@@ -442,23 +596,26 @@ const TrackRide = () => {
           const pickupStatus = localStorage.getItem(`ride_${activeRide.ride_id}_pickup_status`);
           
           // Initialize state based on pickup status
+          let initialStep = 0;
+          let initialCompletedSteps = [];
+          
           if (pickupStatus === 'true') {
             // If pickup already confirmed, go straight to step 3
-            setStep(3);
-            setCompletedSteps([0, 1, 2]);
+            initialStep = 3;
+            initialCompletedSteps = [0, 1, 2];
             localStorage.setItem("trackingStep", "3");
             setNotifiedPickup(true);
           } else if (activeRide.status === "Ongoing") {
             // If ride is ongoing but pickup not confirmed, go to step 1
-            setStep(1);
-            setCompletedSteps([0]);
+            initialStep = 1;
+            initialCompletedSteps = [0];
             localStorage.setItem("trackingStep", "1");
-          } else {
-            // Otherwise, start at step 0
-            setStep(0);
-            setCompletedSteps([]);
-            localStorage.setItem("trackingStep", "0");
           }
+          
+          // Apply initial state
+          setStep(initialStep);
+          currentStepRef.current = initialStep;
+          setCompletedSteps(initialCompletedSteps);
           
           // Save booking info and set driver accepted if ride is ongoing
           localStorage.setItem("latestBooking", JSON.stringify(rideInfo));
@@ -473,6 +630,9 @@ const TrackRide = () => {
           if (activeRide.status === "Ongoing" && !pickupStatus) {
             startPickupCheck(activeRide.ride_id);
           }
+          
+          // Mark as initialized
+          setInitialized(true);
         } else {
           // No active ride found
           Swal.fire({
@@ -489,49 +649,209 @@ const TrackRide = () => {
       checkForRide();
     }
 
+    // Clean up function
     return () => {
-      // Clear intervals when component unmounts
       if (statusCheckInterval.current) {
         clearInterval(statusCheckInterval.current);
       }
       if (pickupCheckInterval.current) {
         clearInterval(pickupCheckInterval.current);
       }
-      if (pickupFastPoll) {
-        clearInterval(pickupFastPoll);
+    };
+  }, [navigate, initialized]);
+
+  // Setup a periodic check for status after initialization
+  useEffect(() => {
+    if (!initialized || !booking || !booking.ride_id) return;
+    
+    console.log("Setting up status monitoring");
+    
+    // Check for status mismatch on interval
+    const statusMonitorInterval = setInterval(() => {
+      // Skip if transitioning
+      if (isTransitioning) return;
+      
+      // Check for step mismatch with localStorage
+      checkAndFixStepMismatch();
+      
+      // Check ride statuses
+      const rideId = booking.ride_id;
+      
+      // Check for currentStep in localStorage (set by DriverRoutes)
+      const currentStepStr = localStorage.getItem(`ride_${rideId}_currentStep`);
+      if (currentStepStr) {
+        const storedStep = parseInt(currentStepStr, 10);
+        if (!isNaN(storedStep) && storedStep > currentStepRef.current) {
+          console.log(`Status monitor: Found higher step in localStorage: ${storedStep}`);
+          
+          // Create completed steps array for all previous steps
+          const newCompletedSteps = [];
+          for (let i = 0; i < storedStep; i++) {
+            newCompletedSteps.push(i);
+          }
+          
+          // Update to the stored step if it's higher than current
+          updateStep(storedStep, newCompletedSteps);
+          return; // Skip other checks since we've already updated
+        }
+      }
+      
+      // Continue with traditional status checks
+      const driverArrivedStatus = localStorage.getItem(`ride_${rideId}_driver_arrived_status`);
+      const pickupStatus = localStorage.getItem(`ride_${rideId}_pickup_status`);
+      const enrouteStatus = localStorage.getItem(`ride_${rideId}_enroute_status`);
+      const completedStatus = localStorage.getItem(`ride_${rideId}_completed_status`);
+      const driverHasArrived = driverArrivedStatus === 'true' || localStorage.getItem(`driver_arrived_${rideId}`) === 'true';
+      const passengerPickedUp = pickupStatus === 'true' || localStorage.getItem(`passenger_pickup_${rideId}`) === 'true';
+      
+      console.log(`Status monitor: step=${currentStepRef.current}, driverArrived=${driverHasArrived}, pickup=${passengerPickedUp}, enroute=${enrouteStatus === 'true'}, transitioning=${isTransitioning}`);
+      
+      // Process events in sequence to ensure proper step progression
+      if (completedStatus === 'true' && currentStepRef.current < 6) {
+        console.log("Status monitor: Ride has been completed");
+        updateStep(6, [0, 1, 2, 3, 4, 5]);
+      }
+      else if (enrouteStatus === 'true' && currentStepRef.current < 5) {
+        console.log("Status monitor: On the way to destination");
+        updateStep(5, [0, 1, 2, 3, 4]);
+      }
+      else if (passengerPickedUp && currentStepRef.current < 4) {
+        console.log("Status monitor: Passenger has been picked up");
+        updateStep(4, [0, 1, 2, 3]);
+        setNotifiedPickup(true);
+      }
+      else if (driverHasArrived && currentStepRef.current < 3) {
+        console.log("Status monitor: Driver has arrived at pickup");
+        updateStep(3, [0, 1, 2]);
+        
+        // Show notification if not already shown
+        if (!notifiedArrival) {
+          Swal.fire({
+            icon: "info",
+            title: "Driver Has Arrived",
+            text: "Your driver has arrived at the pickup location.",
+            timer: 4000,
+            timerProgressBar: true,
+            showConfirmButton: false,
+          });
+          setNotifiedArrival(true);
+        }
+      }
+    }, 1000);
+    
+    // Listen for custom events from DriverRoutes
+    const handleDriverArrival = (event) => {
+      if (booking && event.detail && event.detail.rideId === parseInt(booking.ride_id, 10)) {
+        console.log("Event received: Driver arrival confirmed");
+        if (currentStepRef.current < 3 && !isTransitioning) {
+          updateStep(3, [0, 1, 2]);
+          
+          // Show notification if not already shown
+          if (!notifiedArrival) {
+            Swal.fire({
+              icon: "info",
+              title: "Driver Has Arrived",
+              text: "Your driver has arrived at the pickup location.",
+              timer: 4000,
+              timerProgressBar: true,
+              showConfirmButton: false,
+            });
+            setNotifiedArrival(true);
+          }
+        }
       }
     };
-  }, [navigate]);
+    
+    const handlePickupConfirmed = (event) => {
+      if (booking && event.detail && event.detail.rideId === parseInt(booking.ride_id, 10)) {
+        console.log("Event received: Pickup confirmed");
+        if (currentStepRef.current < 4 && !isTransitioning) {
+          updateStep(4, [0, 1, 2, 3]);
+          setNotifiedPickup(true);
+          
+          // After a short delay, show "On the way to destination"
+          setTimeout(() => {
+            if (currentStepRef.current < 5 && !isTransitioning) {
+              updateStep(5, [0, 1, 2, 3, 4]);
+            }
+          }, 2000);
+        }
+      }
+    };
+    
+    const handleRideCompleted = (event) => {
+      if (booking && event.detail && event.detail.rideId === parseInt(booking.ride_id, 10)) {
+        console.log("Event received: Ride completed");
+        if (currentStepRef.current < 6 && !isTransitioning) {
+          updateStep(6, [0, 1, 2, 3, 4, 5]);
+          
+          // Show completion notification 
+          setTimeout(() => {
+            Swal.fire({
+              icon: "success",
+              title: "Ride Completed",
+              text: "Your ride has been completed. Thank you for riding with us!",
+              confirmButtonText: "Rate Your Trip",
+              showCancelButton: true,
+              cancelButtonText: "Later"
+            }).then((result) => {
+              if (result.isConfirmed) {
+                // Navigate to feedback page
+                navigate("/feedback", { state: { ride: booking } });
+              }
+            });
+          }, 1000);
+        }
+      }
+    };
+    
+    // Add event listeners
+    document.addEventListener('driverArrivalConfirmed', handleDriverArrival);
+    document.addEventListener('ridePickupConfirmed', handlePickupConfirmed);
+    document.addEventListener('rideCompleted', handleRideCompleted);
+    
+    return () => {
+      clearInterval(statusMonitorInterval);
+      document.removeEventListener('driverArrivalConfirmed', handleDriverArrival);
+      document.removeEventListener('ridePickupConfirmed', handlePickupConfirmed);
+      document.removeEventListener('rideCompleted', handleRideCompleted);
+    };
+  }, [initialized, booking, isTransitioning, notifiedArrival, notifiedPickup, updateStep, checkAndFixStepMismatch, navigate]);
 
+  // Handle automatic step progression
   useEffect(() => {
+    // Skip if not initialized or no booking
+    if (!initialized || !booking) return;
+    
     let timeout;
-    if (booking && driverAccepted && step < steps.length - 1 && step > 0) {
-      // Skip the automatic progression to step 3 since we now
-      // wait for the driver to confirm pickup
-      if (step === 1) {
+    if (driverAccepted && currentStepRef.current < steps.length - 1 && currentStepRef.current > 0) {
+      // Skip automatic progression for steps that require driver confirmation
+      if (currentStepRef.current === 1) {
         console.log(`TrackRide - Waiting for driver to confirm pickup`);
         // No automatic progression for step 1 -> 3, it's controlled by driver
-      } else if (step === 2) {
+      } else if (currentStepRef.current === 2) {
         // Step 2 is the pickup confirmation, which quickly transitions to step 3
-        // This is handled in the startPickupCheck function
         console.log(`TrackRide - Passenger picked up, transitioning to destination soon`);
       } else {
         // For other steps, continue with the automatic progression
-        console.log(`TrackRide - Starting timeout for step transition: ${step} -> ${step + 1}`);
-        const delay = step === 3 ? 12000 : 10000;
+        console.log(`TrackRide - Starting timeout for step transition: ${currentStepRef.current} -> ${currentStepRef.current + 1}`);
+        const delay = currentStepRef.current === 3 ? 12000 : 10000;
         timeout = setTimeout(() => {
-          const nextStep = step + 1;
-          console.log(`TrackRide - Transitioning from step ${step} to ${nextStep}`);
+          // Skip progression if we're already transitioning
+          if (isTransitioning) {
+            console.log(`TrackRide - Skipping auto-progression because a transition is in progress`);
+            return;
+          }
+          
+          const nextStep = currentStepRef.current + 1;
+          console.log(`TrackRide - Transitioning from step ${currentStepRef.current} to ${nextStep}`);
           
           // Update completedSteps - mark all previous steps as completed
           const newCompletedSteps = [...completedSteps];
-          if (!newCompletedSteps.includes(step)) {
-            newCompletedSteps.push(step);
+          if (!newCompletedSteps.includes(currentStepRef.current)) {
+            newCompletedSteps.push(currentStepRef.current);
           }
-          setCompletedSteps(newCompletedSteps);
-          
-          setStep(nextStep);
-          localStorage.setItem("trackingStep", nextStep.toString());
+          updateStep(nextStep, newCompletedSteps);
           
           // If this is the final step, update the ride status to completed
           if (nextStep === steps.length - 1 && booking && booking.ride_id) {
@@ -555,111 +875,168 @@ const TrackRide = () => {
       }
     }
     return () => clearTimeout(timeout);
-  }, [booking, driverAccepted, step, steps.length, completedSteps]);
+  }, [booking, driverAccepted, step, steps.length, completedSteps, isTransitioning, updateStep, initialized]);
 
   useEffect(() => {
     if (booking && coordinates && (step === 1 || step === 3)) {
-      // Clean up existing map and markers
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-      markersRef.current.forEach(marker => marker.remove());
-      markersRef.current = [];
-      if (routeLineRef.current) {
-        routeLineRef.current.remove();
-        routeLineRef.current = null;
-      }
-
-      // Initialize new map
-      const mapInstance = L.map('map').setView(coordinates.pickup, 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(mapInstance);
-      mapRef.current = mapInstance;
-
-      // Create markers with tooltips
-      const pickupMarker = L.marker(coordinates.pickup, {
-        icon: L.divIcon({
-          className: 'custom-div-icon',
-          html: `<div style="background-color: #4CAF50; width: 12px; height: 12px; border-radius: 50%;"></div>`,
-          iconSize: [12, 12]
-        })
-      }).addTo(mapInstance);
-      pickupMarker.bindTooltip(`Pickup: ${booking.pickup}`, {
-        permanent: true,
-        direction: 'top',
-        className: 'custom-tooltip'
-      });
-      markersRef.current.push(pickupMarker);
-
-      const dropoffMarker = L.marker(coordinates.dropoff, {
-        icon: L.divIcon({
-          className: 'custom-div-icon',
-          html: `<div style="background-color: #f44336; width: 12px; height: 12px; border-radius: 50%;"></div>`,
-          iconSize: [12, 12]
-        })
-      }).addTo(mapInstance);
-      dropoffMarker.bindTooltip(`Dropoff: ${booking.dropoff}`, {
-        permanent: true,
-        direction: 'top',
-        className: 'custom-tooltip'
-      });
-      markersRef.current.push(dropoffMarker);
-
-      const driverMarkerInstance = L.marker(coordinates.pickup, {
-        icon: L.divIcon({
-          className: 'custom-div-icon',
-          html: `<div style="background-color: #2196F3; width: 12px; height: 12px; border-radius: 50%;"></div>`,
-          iconSize: [12, 12]
-        })
-      }).addTo(mapInstance);
-      driverMarkerInstance.bindTooltip('Driver', {
-        permanent: true,
-        direction: 'top',
-        className: 'custom-tooltip'
-      });
-      markersRef.current.push(driverMarkerInstance);
-
-      // Get and draw real route
-      getRoute(coordinates.pickup, coordinates.dropoff).then(routeCoordinates => {
-        if (routeCoordinates) {
-          const routeLineInstance = L.polyline(routeCoordinates, {
-            color: '#FF4B2B',
-            weight: 4
-          }).addTo(mapInstance);
-          routeLineRef.current = routeLineInstance;
-
-          // Fit bounds to show all markers and route
-          const bounds = L.latLngBounds(routeCoordinates);
-          mapInstance.fitBounds(bounds);
-        } else {
-          // Fallback to straight line if route fetch fails
-          const routeLineInstance = L.polyline([coordinates.pickup, coordinates.dropoff], {
-            color: '#FF4B2B',
-            weight: 4
-          }).addTo(mapInstance);
-          routeLineRef.current = routeLineInstance;
-
-          const bounds = L.latLngBounds([coordinates.pickup, coordinates.dropoff]);
-          mapInstance.fitBounds(bounds);
+      // Wait for DOM to be ready
+      const initializeMap = () => {
+        // Set map loading state
+        setIsMapLoading(true);
+        
+        // Clean up existing map and markers
+        if (mapRef.current) {
+          mapRef.current.remove();
+          mapRef.current = null;
         }
-      });
+        
+        if (markersRef.current && markersRef.current.length) {
+          markersRef.current.forEach(marker => {
+            if (marker && typeof marker.remove === 'function') {
+              marker.remove();
+            }
+          });
+          markersRef.current = [];
+        }
+        
+        if (routeLineRef.current) {
+          routeLineRef.current.remove();
+          routeLineRef.current = null;
+        }
+
+        // Check if the map container element exists before initializing
+        const mapContainer = document.getElementById('map');
+        if (!mapContainer) {
+          console.error('Map container element not found! Retrying in 500ms...');
+          // Retry after a short delay
+          setTimeout(initializeMap, 500);
+          return;
+        }
+
+        // Ensure the map container is visible and has dimensions
+        if (mapContainer.clientWidth === 0 || mapContainer.clientHeight === 0) {
+          console.error('Map container has zero dimensions! Retrying in 500ms...');
+          setTimeout(initializeMap, 500);
+          return;
+        }
+
+        // Initialize new map with a try-catch block
+        try {
+          const mapInstance = L.map('map', {
+            attributionControl: false, // Hide attribution to reduce clutter
+            zoomControl: true,
+            doubleClickZoom: false // Prevent accidental zooming
+          }).setView(coordinates.pickup, 13);
+          
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+          }).addTo(mapInstance);
+          
+          mapRef.current = mapInstance;
+
+          // Create markers with tooltips
+          const pickupMarker = L.marker(coordinates.pickup, {
+            icon: L.divIcon({
+              className: 'custom-div-icon',
+              html: `<div style="background-color: #4CAF50; width: 12px; height: 12px; border-radius: 50%;"></div>`,
+              iconSize: [12, 12]
+            })
+          });
+          
+          // Add marker to map only if map exists
+          if (mapInstance && !mapInstance._isDestroyed) {
+            pickupMarker.addTo(mapInstance);
+            pickupMarker.bindTooltip("Pickup Location", { className: 'custom-tooltip' });
+            markersRef.current.push(pickupMarker);
+          }
+
+          const dropoffMarker = L.marker(coordinates.dropoff, {
+            icon: L.divIcon({
+              className: 'custom-div-icon',
+              html: `<div style="background-color: #F44336; width: 12px; height: 12px; border-radius: 50%;"></div>`,
+              iconSize: [12, 12]
+            })
+          });
+          
+          // Add marker to map only if map exists
+          if (mapInstance && !mapInstance._isDestroyed) {
+            dropoffMarker.addTo(mapInstance);
+            dropoffMarker.bindTooltip("Dropoff Location", { className: 'custom-tooltip' });
+            markersRef.current.push(dropoffMarker);
+          }
+
+          // Set loading to false when map is ready
+          setIsMapLoading(false);
+
+          // Fit map bounds to include both markers with padding
+          try {
+            const bounds = L.latLngBounds([coordinates.pickup, coordinates.dropoff]);
+            mapInstance.fitBounds(bounds, { padding: [30, 30] });
+          } catch (err) {
+            console.error('Error setting map bounds:', err);
+            // Fallback to a simple view if fitting bounds fails
+            mapInstance.setView(coordinates.pickup, 13);
+          }
+
+          // Draw route if available
+          getRoute(coordinates.pickup, coordinates.dropoff).then(routeCoords => {
+            if (routeCoords && mapInstance && !mapInstance._isDestroyed) {
+              try {
+                const routeLine = L.polyline(routeCoords, { 
+                  color: '#3388ff', 
+                  weight: 4, 
+                  opacity: 0.7 
+                });
+                routeLine.addTo(mapInstance);
+                routeLineRef.current = routeLine;
+              } catch (err) {
+                console.error('Error adding route line:', err);
+              }
+            } else {
+              // Fallback: draw straight line
+              try {
+                const straightLine = L.polyline([coordinates.pickup, coordinates.dropoff], { 
+                  color: '#3388ff', 
+                  weight: 4, 
+                  opacity: 0.7, 
+                  dashArray: '10, 10' 
+                });
+                if (mapInstance && !mapInstance._isDestroyed) {
+                  straightLine.addTo(mapInstance);
+                  routeLineRef.current = straightLine;
+                }
+              } catch (err) {
+                console.error('Error adding fallback line:', err);
+              }
+            }
+          }).catch(err => {
+            console.error('Error getting route:', err);
+          });
+        } catch (error) {
+          console.error('Error initializing map:', error);
+          setIsMapLoading(false);
+        }
+      };
+
+      // Start the initialization process
+      initializeMap();
     }
 
     return () => {
+      // Clean up map when component unmounts or when this effect is re-run
       if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
+        try {
+          mapRef.current.remove();
+          mapRef.current = null;
+        } catch (error) {
+          console.error('Error cleaning up map:', error);
+        }
       }
-      markersRef.current.forEach(marker => marker.remove());
-      markersRef.current = [];
-      if (routeLineRef.current) {
-        routeLineRef.current.remove();
-        routeLineRef.current = null;
-      }
+      // Reset loading state
+      setIsMapLoading(false);
     };
-  }, [booking, step, coordinates]);
+  }, [booking, coordinates, step]);
 
   // Simulate driver movement along the real route with smoother animation
   useEffect(() => {
@@ -683,149 +1060,208 @@ const TrackRide = () => {
     return () => clearInterval(interval);
   }, [step]);
 
-  // Add a storage event listener to immediately detect localStorage changes
+  // Direct check for pickup and arrival status
   useEffect(() => {
-    if (!booking || !booking.ride_id || step >= 3 || notifiedPickup) return;
+    if (!booking || !booking.ride_id) return;
     
-    // Function to handle localStorage changes from other tabs/windows
-    const handleStorageChange = (event) => {
-      // Check if the changed key matches our ride's pickup status
-      if (booking && booking.ride_id && event.key === `ride_${booking.ride_id}_pickup_status` && event.newValue === 'true') {
-        console.log("STORAGE EVENT: Pickup confirmation detected from driver!");
-        
-        // Immediately update UI to reflect pickup
-        setCompletedSteps([0, 1]);
-        setStep(2);
-        
-        // Show notification to customer
-        Swal.fire({
-          icon: 'success',
-          title: 'Driver Has Arrived!',
-          text: 'Your driver has confirmed pickup and is taking you to your destination.',
-          timer: 3000,
-          showConfirmButton: false,
-          position: 'top-end',
-          toast: true
-        });
-        
-        // Quickly transition to next step
-        setTimeout(() => {
-          setCompletedSteps([0, 1, 2]);
-          setStep(3);
-          localStorage.setItem("trackingStep", "3");
-          setNotifiedPickup(true);
-        }, 300);
+    console.log("Setting up direct check for status changes");
+    
+    const directCheckInterval = setInterval(() => {
+      // Skip checks if we're currently transitioning
+      if (isTransitioning) {
+        console.log("Direct check: Skipping because transition is in progress");
+        return;
       }
-    };
-    
-    // Add the event listener
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Clean up
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, [booking, step, notifiedPickup]);
-
-  // Direct check for pickup status (additional check beyond the interval in startPickupCheck)
-  useEffect(() => {
-    // Skip if no booking or we're already past step 3
-    if (!booking || !booking.ride_id || step >= 3 || notifiedPickup) return;
-    
-    console.log("Setting up additional direct check for pickup status");
-    
-    // Function to check pickup status directly
-    const checkDirectPickupStatus = () => {
-      const pickupStatus = localStorage.getItem(`ride_${booking.ride_id}_pickup_status`);
       
-      if (pickupStatus === 'true') {
-        console.log("DIRECT CHECK: Pickup confirmation detected!");
+      const rideId = booking.ride_id;
+      const driverArrivedStatus = localStorage.getItem(`ride_${rideId}_driver_arrived_status`);
+      const pickupStatus = localStorage.getItem(`ride_${rideId}_pickup_status`);
+      const completedStatus = localStorage.getItem(`ride_${rideId}_completed_status`);
+      
+      console.log(`Direct check: driver arrived=${driverArrivedStatus}, pickup=${pickupStatus}, completed=${completedStatus}, step=${step}, transitioning=${isTransitioning}`);
+      
+      // Force step updates based on localStorage values
+      if (driverArrivedStatus === 'true' && step < 3) {
+        console.log("Direct check update: Moving to step 3 (Driver arrived)");
+        updateStep(3, [0, 1, 2]);
         
-        // Clear the interval
-        clearInterval(checkInterval);
-        
-        // Immediately update UI to reflect pickup
-        setCompletedSteps([0, 1]);
-        setStep(2);
-        
-        // Show notification to customer
-        Swal.fire({
-          icon: 'success',
-          title: 'Driver Has Arrived!',
-          text: 'Your driver has confirmed pickup and is taking you to your destination.',
-          timer: 3000,
-          showConfirmButton: false,
-          position: 'top-end',
-          toast: true
-        });
-        
-        // Quickly transition to next step
-        setTimeout(() => {
-          setCompletedSteps([0, 1, 2]);
-          setStep(3);
-          localStorage.setItem("trackingStep", "3");
-          setNotifiedPickup(true);
-        }, 300);
+        // Only show notification if not previously shown
+        if (!notifiedArrival) {
+          Swal.fire({
+            icon: "info",
+            title: "Driver Has Arrived",
+            text: "Your driver has arrived at the pickup location.",
+            timer: 4000,
+            timerProgressBar: true,
+            showConfirmButton: false,
+          });
+          setNotifiedArrival(true);
+        }
       }
-    };
-    
-    // Run once immediately
-    checkDirectPickupStatus();
-    
-    // Set up more frequent check (every 50ms = 20 checks per second)
-    const checkInterval = setInterval(checkDirectPickupStatus, 50);
+      
+      // Only check pickup if we're not already past it
+      else if (pickupStatus === 'true' && step < 4) {
+        console.log("Direct check update: Moving to step 4/5 (Pickup/En route)");
+        updateStep(4, [0, 1, 2, 3]);
+        setNotifiedPickup(true);
+        
+        // After confirmation, we should quickly move to step 5
+        setTimeout(() => {
+          // Only proceed if we're not already past step 5 and not transitioning
+          if (step < 5 && !isTransitioning) {
+            updateStep(5, [0, 1, 2, 3, 4]);
+          }
+        }, 2000);
+      }
+      
+      // Only check completion if we're not already at the final step
+      else if (completedStatus === 'true' && step < 6) {
+        console.log("Direct check update: Moving to step 6 (Completed)");
+        updateStep(6, [0, 1, 2, 3, 4, 5]);
+      }
+    }, 1000);
     
     // Clean up
     return () => {
-      clearInterval(checkInterval);
+      clearInterval(directCheckInterval);
     };
-  }, [booking, step, notifiedPickup]);
+  }, [booking, step, notifiedArrival, notifiedPickup, isTransitioning, updateStep]);
 
-  // Listen for custom pickup confirmation event
-  useEffect(() => {
-    if (!booking || !booking.ride_id || step >= 3 || notifiedPickup) return;
+  // Add a special function to forcibly check for updates from another browser
+  const forceCheckForUpdates = useCallback(async (rideId) => {
+    if (!rideId) return;
     
-    console.log("Setting up custom event listener for pickup confirmation");
+    console.log(`Force checking for updates on ride ${rideId}`);
     
-    // Handler for custom pickup event
-    const handlePickupEvent = (event) => {
-      // Check if this event is for our ride
-      if (booking && booking.ride_id && event.detail.rideId === parseInt(booking.ride_id, 10)) {
-        console.log("CUSTOM EVENT: Pickup confirmation detected!");
+    try {
+      // Get detailed status from server first
+      const detailedStatus = await rideService.getDetailedRideStatus(rideId);
+      console.log(`Server status for ride ${rideId}:`, detailedStatus);
+      
+      // First check if there are server-side status changes
+      if (detailedStatus) {
+        // Process driver arrival
+        if (detailedStatus.driver_arrived && currentStepRef.current < 3) {
+          console.log(`Force update: Driver has arrived (from server)`);
+          updateStep(3, [0, 1, 2]);
+          setNotifiedArrival(true);
+          return true;
+        }
         
-        // Immediately update UI to reflect pickup
-        setCompletedSteps([0, 1]);
-        setStep(2);
-        
-        // Show notification to customer
-        Swal.fire({
-          icon: 'success',
-          title: 'Driver Has Arrived!',
-          text: 'Your driver has confirmed pickup and is taking you to your destination.',
-          timer: 3000,
-          showConfirmButton: false,
-          position: 'top-end',
-          toast: true
-        });
-        
-        // Quickly transition to next step
-        setTimeout(() => {
-          setCompletedSteps([0, 1, 2]);
-          setStep(3);
-          localStorage.setItem("trackingStep", "3");
+        // Process passenger pickup
+        if (detailedStatus.passenger_picked_up && currentStepRef.current < 4) {
+          console.log(`Force update: Passenger has been picked up (from server)`);
+          updateStep(4, [0, 1, 2, 3]);
           setNotifiedPickup(true);
-        }, 300);
+          
+          // Schedule transition to en route
+          setTimeout(() => {
+            if (currentStepRef.current < 5 && !isTransitioning) {
+              updateStep(5, [0, 1, 2, 3, 4]);
+            }
+          }, 2000);
+          return true;
+        }
+        
+        // Process completion
+        if (detailedStatus.status === 'Completed' && currentStepRef.current < 6) {
+          console.log(`Force update: Ride has been completed (from server)`);
+          updateStep(6, [0, 1, 2, 3, 4, 5]);
+          return true;
+        }
       }
-    };
+      
+      // Next, check localStorage for any updates with timestamp
+      const updateTimestamp = localStorage.getItem(`ride_${rideId}_update_timestamp`);
+      if (updateTimestamp && parseInt(updateTimestamp, 10) > lastTimestampCheck.current) {
+        console.log(`Detected newer update timestamp: ${updateTimestamp}`);
+        lastTimestampCheck.current = parseInt(updateTimestamp, 10);
+        
+        // Check for all statuses to find the highest valid step
+        const currentStepStr = localStorage.getItem(`ride_${rideId}_currentStep`);
+        const driverArrivedStatus = localStorage.getItem(`ride_${rideId}_driver_arrived_status`);
+        const pickupStatus = localStorage.getItem(`ride_${rideId}_pickup_status`);
+        const enrouteStatus = localStorage.getItem(`ride_${rideId}_enroute_status`);
+        const completedStatus = localStorage.getItem(`ride_${rideId}_completed_status`);
+        
+        let targetStep = currentStepRef.current;
+        
+        // Find the highest valid step based on statuses
+        if (completedStatus === 'true') targetStep = Math.max(targetStep, 6);
+        else if (enrouteStatus === 'true') targetStep = Math.max(targetStep, 5);
+        else if (pickupStatus === 'true') targetStep = Math.max(targetStep, 4);
+        else if (driverArrivedStatus === 'true') targetStep = Math.max(targetStep, 3);
+        
+        // Also check explicitly stored step
+        if (currentStepStr) {
+          const explicitStep = parseInt(currentStepStr, 10);
+          if (!isNaN(explicitStep)) {
+            targetStep = Math.max(targetStep, explicitStep);
+          }
+        }
+        
+        // Update to the target step if it's higher than current
+        if (targetStep > currentStepRef.current) {
+          console.log(`Force update: Updating to step ${targetStep} based on localStorage`);
+          
+          // Create completed steps array
+          const newCompletedSteps = [];
+          for (let i = 0; i < targetStep; i++) {
+            newCompletedSteps.push(i);
+          }
+          
+          // Update step
+          updateStep(targetStep, newCompletedSteps);
+          
+          // Set notification flags as needed
+          if (targetStep >= 3) setNotifiedArrival(true);
+          if (targetStep >= 4) setNotifiedPickup(true);
+          
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error("Error during force check:", error);
+      return false;
+    }
+  }, [updateStep, isTransitioning]);
+
+  // Add a continuous polling check specifically for cross-browser updates
+  useEffect(() => {
+    if (!initialized || !booking || !booking.ride_id) return;
     
-    // Add the event listener
-    document.addEventListener('ridePickupConfirmed', handlePickupEvent);
+    console.log("Setting up cross-browser update polling");
     
-    // Clean up
+    // Initialize the timestamp ref to current time
+    lastTimestampCheck.current = Date.now();
+    
+    // Set up a frequent polling interval for cross-browser updates
+    const updatePollInterval = setInterval(() => {
+      if (isTransitioning) return;
+      
+      // Force check for updates
+      forceCheckForUpdates(booking.ride_id);
+    }, 1500); // Check every 1.5 seconds
+    
     return () => {
-      document.removeEventListener('ridePickupConfirmed', handlePickupEvent);
+      clearInterval(updatePollInterval);
     };
-  }, [booking, step, notifiedPickup]);
+  }, [initialized, booking, isTransitioning, forceCheckForUpdates]);
+
+  // Add a reload button in the debug panel
+  const forceRefresh = useCallback(() => {
+    if (booking && booking.ride_id) {
+      forceCheckForUpdates(booking.ride_id).then(updated => {
+        if (!updated) {
+          // If no updates from server, try one last desperate approach - reload the page
+          console.log("No updates found, forcing page reload");
+          window.location.reload();
+        }
+      });
+    }
+  }, [booking, forceCheckForUpdates]);
 
   const logout = () => {
     localStorage.removeItem("user");
@@ -870,6 +1306,56 @@ const TrackRide = () => {
                 <h6 className="mb-1">Ride Type: {booking.rideType}</h6>
                 <h6 className="mb-1">Fare Estimate: {booking.fare || booking.cost}</h6>
                 <h6 className="mb-0">Driver: {driverInfo ? driverInfo.email : booking.driver || "Assigned"}</h6>
+                
+                {/* Enhanced debug info and force update button */}
+                <div className="mt-3 p-2 bg-light border rounded">
+                  <small className="d-block text-muted mb-1">Debug Info - Current Step: {step}</small>
+                  <div className="d-flex gap-2">
+                    <button 
+                      className="btn btn-sm btn-outline-secondary" 
+                      onClick={() => {
+                        const driverArrivedStatus = localStorage.getItem(`ride_${booking.ride_id}_driver_arrived_status`);
+                        const pickupStatus = localStorage.getItem(`ride_${booking.ride_id}_pickup_status`);
+                        const enrouteStatus = localStorage.getItem(`ride_${booking.ride_id}_enroute_status`);
+                        const completedStatus = localStorage.getItem(`ride_${booking.ride_id}_completed_status`);
+                        const currentStepStr = localStorage.getItem(`ride_${booking.ride_id}_currentStep`);
+                        alert(`Current Status:\nStep: ${step}\nStored Step: ${currentStepStr || 'Not set'}\nDriver Arrived: ${driverArrivedStatus}\nPickup Status: ${pickupStatus}\nEnroute Status: ${enrouteStatus}\nCompleted Status: ${completedStatus}`);
+                      }}
+                    >
+                      Show Status
+                    </button>
+                    <button 
+                      className="btn btn-sm btn-outline-primary" 
+                      onClick={() => {
+                        localStorage.setItem(`ride_${booking.ride_id}_driver_arrived_status`, 'true');
+                        localStorage.setItem(`ride_${booking.ride_id}_currentStep`, '3');
+                        localStorage.setItem(`ride_${booking.ride_id}_update_timestamp`, Date.now().toString());
+                        updateStep(3, [0, 1, 2]);
+                        forceUpdate();
+                      }}
+                    >
+                      Force Driver Arrived
+                    </button>
+                    <button 
+                      className="btn btn-sm btn-outline-success" 
+                      onClick={() => {
+                        localStorage.setItem(`ride_${booking.ride_id}_pickup_status`, 'true');
+                        localStorage.setItem(`ride_${booking.ride_id}_currentStep`, '4');
+                        localStorage.setItem(`ride_${booking.ride_id}_update_timestamp`, Date.now().toString());
+                        updateStep(4, [0, 1, 2, 3]);
+                        forceUpdate();
+                      }}
+                    >
+                      Force Pickup
+                    </button>
+                    <button 
+                      className="btn btn-sm btn-outline-info" 
+                      onClick={forceRefresh}
+                    >
+                      Refresh Status
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -931,7 +1417,18 @@ const TrackRide = () => {
 
               {(step === 1 || step === 3) && (
                 <div className="mt-4 animate__animated animate__fadeIn">
-                  <div id="map" style={{ height: "350px", width: "100%", borderRadius: "8px" }}></div>
+                  <div 
+                    id="map" 
+                    key={`map-${step}-${booking?.ride_id || 'default'}`} 
+                    style={{ 
+                      height: "350px", 
+                      width: "100%", 
+                      borderRadius: "8px",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                      position: "relative",
+                      border: "1px solid #eee"
+                    }}
+                  ></div>
                   {isLoading && (
                     <div className="loading-overlay">
                       <div className="spinner-border text-primary" role="status">
@@ -952,6 +1449,32 @@ const TrackRide = () => {
                 </div>
               )}
             </div>
+
+            {/* Map container with a key to force re-render and specific styling */}
+            {booking && coordinates && (step === 1 || step === 3) && (
+              <div className="mapContainer relative mt-4 mb-6">
+                <div 
+                  id="map" 
+                  key={`map-${step}-${booking?.ride_id}`}
+                  style={{ 
+                    height: "350px", 
+                    width: "100%", 
+                    borderRadius: "8px",
+                    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+                    position: "relative",
+                    border: "1px solid #e0e0e0"
+                  }}
+                ></div>
+                {isMapLoading && (
+                  <div 
+                    className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-70"
+                    style={{ borderRadius: "8px" }}
+                  >
+                    <div className="spinner"></div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {step >= steps.length - 1 && (
               <div className="text-center mt-4">

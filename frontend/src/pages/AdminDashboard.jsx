@@ -8,17 +8,112 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 const API_BASE_URL = "http://localhost:8000";
 
+// Styles for the accordion
+const accordionStyles = {
+  accordion: {
+    borderRadius: '0.25rem',
+    overflow: 'hidden',
+  },
+  accordionItem: {
+    borderBottom: '1px solid rgba(0,0,0,.125)',
+  },
+  accordionButton: {
+    display: 'block',
+    padding: '1rem 1.25rem',
+    fontSize: '1rem',
+    color: '#212529',
+    textAlign: 'left',
+    backgroundColor: '#f8f9fa',
+    border: 'none',
+    borderRadius: '0',
+    width: '100%',
+    position: 'relative',
+    cursor: 'pointer',
+  },
+  accordionCollapse: {
+    height: 'auto',
+    transition: 'height 0.35s ease',
+  },
+  accordionBody: {
+    padding: '1rem 1.25rem',
+    backgroundColor: '#fff',
+  },
+  tableContainer: {
+    overflowX: 'auto',
+    width: '100%',
+  },
+  table: {
+    width: '100%',
+    marginBottom: '1rem',
+    color: '#212529',
+    borderCollapse: 'collapse',
+  },
+  tableHeader: {
+    backgroundColor: '#f8f9fa',
+    borderBottom: '2px solid #dee2e6',
+    padding: '0.75rem',
+    textAlign: 'left',
+  },
+  tableCell: {
+    padding: '0.75rem',
+    borderTop: '1px solid #dee2e6',
+    verticalAlign: 'top',
+  },
+  pagination: {
+    display: 'flex',
+    justifyContent: 'center',
+    listStyle: 'none',
+    padding: '0',
+    marginTop: '1rem',
+  },
+  pageItem: {
+    margin: '0 0.25rem',
+  },
+  pageLink: {
+    position: 'relative',
+    display: 'block',
+    padding: '0.5rem 0.75rem',
+    marginLeft: '-1px',
+    lineHeight: '1.25',
+    color: '#007bff',
+    backgroundColor: '#fff',
+    border: '1px solid #dee2e6',
+    cursor: 'pointer',
+  },
+  pageItemDisabled: {
+    margin: '0 0.25rem',
+    opacity: '0.5',
+  },
+  pageLinkDisabled: {
+    position: 'relative',
+    display: 'block',
+    padding: '0.5rem 0.75rem',
+    marginLeft: '-1px',
+    lineHeight: '1.25',
+    color: '#6c757d',
+    backgroundColor: '#fff',
+    border: '1px solid #dee2e6',
+    cursor: 'not-allowed',
+  }
+};
+
 const AdminDashboard = () => {
   const [user, setUser] = useState(null);
   const [tables, setTables] = useState({});
   const [searchQueries, setSearchQueries] = useState({});
   const [currentPages, setCurrentPages] = useState({});
   const rowsPerPage = 2; // Adjust number of rows per page
+  const [activeTable, setActiveTable] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Toggle accordion function
+  const toggleAccordion = (tableId) => {
+    setActiveTable(activeTable === tableId ? null : tableId);
+  };
 
   useEffect(() => {
     // Try to get user from location state first (from login redirect)
@@ -137,36 +232,31 @@ const AdminDashboard = () => {
         ) : error ? (
           <p className="text-danger text-center">{error}</p>
         ) : (
-          <div className="accordion" id="adminTablesAccordion">
+          <div style={accordionStyles.accordion}>
             {Object.keys(tables).map((table, index) => {
               const searchQuery = searchQueries[table] || "";
               const tableData = tables[table] || [];
+              const isActive = activeTable === table || (activeTable === null && index === 0);
               
               // Check if tableData is an array and has items
               if (!Array.isArray(tableData) || tableData.length === 0) {
                 return (
-                  <div className="accordion-item" key={table}>
-                    <h2 className="accordion-header">
+                  <div style={accordionStyles.accordionItem} key={table}>
+                    <h2>
                       <button
-                        className="accordion-button"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target={`#collapse-${table}`}
-                        aria-expanded={index === 0 ? "true" : "false"}
+                        style={accordionStyles.accordionButton}
+                        onClick={() => toggleAccordion(table)}
+                        aria-expanded={isActive ? "true" : "false"}
                         aria-controls={`collapse-${table}`}
                       >
                         {table.charAt(0).toUpperCase() + table.slice(1)}
                       </button>
                     </h2>
-                    <div
-                      id={`collapse-${table}`}
-                      className={`accordion-collapse collapse ${index === 0 ? "show" : ""}`}
-                      data-bs-parent="#adminTablesAccordion"
-                    >
-                      <div className="accordion-body">
+                    {isActive && (
+                      <div style={accordionStyles.accordionBody}>
                         <p>No data available for this table.</p>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               }
@@ -185,25 +275,19 @@ const AdminDashboard = () => {
               );
 
               return (
-                <div className="accordion-item" key={table}>
-                  <h2 className="accordion-header">
+                <div style={accordionStyles.accordionItem} key={table}>
+                  <h2>
                     <button
-                      className="accordion-button"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target={`#collapse-${table}`}
-                      aria-expanded={index === 0 ? "true" : "false"}
+                      style={accordionStyles.accordionButton}
+                      onClick={() => toggleAccordion(table)}
+                      aria-expanded={isActive ? "true" : "false"}
                       aria-controls={`collapse-${table}`}
                     >
                       {table.charAt(0).toUpperCase() + table.slice(1)}
                     </button>
                   </h2>
-                  <div
-                    id={`collapse-${table}`}
-                    className={`accordion-collapse collapse ${index === 0 ? "show" : ""}`}
-                    data-bs-parent="#adminTablesAccordion"
-                  >
-                    <div className="accordion-body">
+                  {isActive && (
+                    <div style={accordionStyles.accordionBody}>
                       {/* Search Input */}
                       <input
                         type="text"
@@ -213,44 +297,54 @@ const AdminDashboard = () => {
                         onChange={(e) => handleSearchChange(table, e.target.value)}
                       />
 
-                      <table className="table table-striped">
-                        <thead>
-                          <tr>
-                            {tableData.length > 0 &&
-                              Object.keys(tableData[0]).map((col) => (
-                                <th key={col}>{col}</th>
-                              ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paginatedData.length > 0 ? (
-                            paginatedData.map((row, idx) => (
-                              <tr key={idx}>
-                                {Object.values(row).map((val, i) => (
-                                  <td key={i}>{val !== null ? val.toString() : 'null'}</td>
+                      <div style={accordionStyles.tableContainer}>
+                        <table style={accordionStyles.table}>
+                          <thead>
+                            <tr>
+                              {tableData.length > 0 &&
+                                Object.keys(tableData[0]).map((col) => (
+                                  <th style={accordionStyles.tableHeader} key={col}>{col}</th>
                                 ))}
-                              </tr>
-                            ))
-                          ) : (
-                            <tr><td colSpan="100%">No data available</td></tr>
-                          )}
-                        </tbody>
-                      </table>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paginatedData.length > 0 ? (
+                              paginatedData.map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.values(row).map((val, i) => (
+                                    <td style={accordionStyles.tableCell} key={i}>{val !== null ? val.toString() : 'null'}</td>
+                                  ))}
+                                </tr>
+                              ))
+                            ) : (
+                              <tr><td style={accordionStyles.tableCell} colSpan="100%">No data available</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
 
                       {/* Pagination Controls */}
                       {totalPages > 1 && (
                         <nav>
-                          <ul className="pagination justify-content-center">
-                            <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
-                              <button className="page-link" onClick={() => handlePageChange(table, currentPage - 1)}>
+                          <ul style={accordionStyles.pagination}>
+                            <li style={currentPage === 1 ? accordionStyles.pageItemDisabled : accordionStyles.pageItem}>
+                              <button 
+                                style={currentPage === 1 ? accordionStyles.pageLinkDisabled : accordionStyles.pageLink} 
+                                onClick={() => currentPage !== 1 && handlePageChange(table, currentPage - 1)}
+                                disabled={currentPage === 1}
+                              >
                                 Previous
                               </button>
                             </li>
-                            <li className="page-item disabled">
-                              <span className="page-link">Page {currentPage} of {totalPages}</span>
+                            <li style={accordionStyles.pageItem}>
+                              <span style={accordionStyles.pageLink}>Page {currentPage} of {totalPages}</span>
                             </li>
-                            <li className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}>
-                              <button className="page-link" onClick={() => handlePageChange(table, currentPage + 1)}>
+                            <li style={currentPage === totalPages ? accordionStyles.pageItemDisabled : accordionStyles.pageItem}>
+                              <button 
+                                style={currentPage === totalPages ? accordionStyles.pageLinkDisabled : accordionStyles.pageLink} 
+                                onClick={() => currentPage !== totalPages && handlePageChange(table, currentPage + 1)}
+                                disabled={currentPage === totalPages}
+                              >
                                 Next
                               </button>
                             </li>
@@ -258,7 +352,7 @@ const AdminDashboard = () => {
                         </nav>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}

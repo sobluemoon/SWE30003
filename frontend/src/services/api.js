@@ -133,11 +133,81 @@ export const rideService = {
       
       // Update ride status to Completed with end time
       const response = await api.put(`/rides/${parsedRideId}/status?status=Completed`);
-      console.log(`Ride ${parsedRideId} completed successfully:`, response.data);
+      
+      // Update localStorage for cross-browser coordination
+      localStorage.setItem(`ride_${parsedRideId}_completed_status`, 'true');
+      localStorage.setItem(`ride_${parsedRideId}_currentStep`, '6');
+      localStorage.setItem(`ride_${parsedRideId}_update_timestamp`, Date.now().toString());
+      localStorage.setItem(`ride_${parsedRideId}_completed_timestamp`, Date.now().toString());
+      localStorage.setItem("trackingStep", "6"); // Update global tracking step
+      
+      console.log(`Ride ${parsedRideId} completed successfully and localStorage updated:`, response.data);
       return response.data;
     } catch (error) {
       console.error(`Error completing ride ${rideId}:`, error);
       throw error?.response?.data || { detail: 'Failed to complete ride' };
+    }
+  },
+  
+  // Get detailed ride status including driver arrival and passenger pickup
+  getDetailedRideStatus: async (rideId) => {
+    try {
+      console.log(`Getting detailed status for ride ${rideId}`);
+      const response = await api.get(`/rides/${rideId}/detailed-status`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error getting detailed status for ride ${rideId}:`, error);
+      throw error?.response?.data || { detail: 'Failed to get detailed ride status' };
+    }
+  },
+  
+  // Set driver arrived status
+  setDriverArrived: async (rideId) => {
+    try {
+      console.log(`Setting driver arrived for ride ${rideId}`);
+      const response = await api.put(`/rides/${rideId}/driver-arrived`);
+      
+      // Update localStorage for cross-browser coordination
+      localStorage.setItem(`ride_${rideId}_driver_arrived_status`, 'true');
+      localStorage.setItem(`driver_arrived_${rideId}`, 'true');
+      localStorage.setItem(`ride_${rideId}_currentStep`, '3');
+      localStorage.setItem(`ride_${rideId}_update_timestamp`, Date.now().toString());
+      localStorage.setItem("trackingStep", "3"); // Update global tracking step
+      
+      console.log(`Driver arrived status set for ride ${rideId} and localStorage updated`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error setting driver arrived for ride ${rideId}:`, error);
+      throw error?.response?.data || { detail: 'Failed to set driver arrived status' };
+    }
+  },
+  
+  // Set passenger pickup status
+  setPassengerPickup: async (rideId) => {
+    try {
+      console.log(`Setting passenger pickup for ride ${rideId}`);
+      const response = await api.put(`/rides/${rideId}/passenger-pickup`);
+      
+      // Update localStorage for cross-browser coordination
+      localStorage.setItem(`ride_${rideId}_pickup_status`, 'true');
+      localStorage.setItem(`passenger_pickup_${rideId}`, 'true');
+      localStorage.setItem(`ride_${rideId}_currentStep`, '4');
+      localStorage.setItem(`ride_${rideId}_update_timestamp`, Date.now().toString());
+      localStorage.setItem("trackingStep", "4"); // Update global tracking step
+      
+      // After 2 seconds, update to en-route status
+      setTimeout(() => {
+        localStorage.setItem(`ride_${rideId}_enroute_status`, 'true');
+        localStorage.setItem(`ride_${rideId}_currentStep`, '5');
+        localStorage.setItem(`ride_${rideId}_update_timestamp`, Date.now().toString());
+        localStorage.setItem("trackingStep", "5"); // Update global tracking step
+      }, 2000);
+      
+      console.log(`Passenger pickup status set for ride ${rideId} and localStorage updated`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error setting passenger pickup for ride ${rideId}:`, error);
+      throw error?.response?.data || { detail: 'Failed to set passenger pickup status' };
     }
   }
 };
