@@ -20,6 +20,7 @@ import RideHistory from "./pages/RideHistory";
 import DriverDashboard from "./pages/DriverDashboard";
 import DriverRoutes from "./pages/DriverRoutes";
 import DriverHistory from "./pages/DriverHistory";
+import DriverFeedback from "./pages/DriverFeedback";
 import AdminLogin from "./pages/AdminLogin";
 import AdminRegister from "./pages/AdminRegister";
 
@@ -166,6 +167,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["driver"]}>
               <DriverHistory />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/driver-feedback"
+          element={
+            <ProtectedRoute allowedRoles={["driver"]}>
+              <DriverFeedback />
             </ProtectedRoute>
           }
         />

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import "animate.css";
 import Topbar from "../components/Topbar";
 import Navbar from "../components/Navbar";
@@ -13,19 +13,25 @@ const Feedback = () => {
   const [hovered, setHovered] = useState(0);
   const [feedbackText, setFeedbackText] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
+    // Get user from localStorage
     const storedUser = JSON.parse(localStorage.getItem("user"));
-    const storedBooking = JSON.parse(localStorage.getItem("latestBooking"));
-
-    if (!storedUser || storedUser.role !== "customer" || !storedBooking || !storedBooking.paid) {
+    
+    // Try to get booking from state first, then fallback to localStorage
+    const stateRide = location.state?.ride;
+    const storedBooking = stateRide || JSON.parse(localStorage.getItem("latestBooking"));
+    
+    // Only check for essential requirements - user is a customer and there's a booking
+    if (!storedUser || storedUser.role !== "customer" || !storedBooking) {
       navigate("/customer-dashboard");
       return;
     }
 
     setUser(storedUser);
     setBooking(storedBooking);
-  }, [navigate]);
+  }, [navigate, location]);
 
   const logout = () => {
     localStorage.removeItem("user");
@@ -97,7 +103,7 @@ const Feedback = () => {
           style={{ position: "relative", zIndex: 2 }}
         >
           <h1 className="display-4 fw-bold text-white">Rate Your Driver</h1>
-          <p className="lead">🌟 You’ve reached the end of your ride. How did we do?</p>
+          <p className="lead">🌟 You've reached the end of your ride. How did we do?</p>
         </div>
       </div>
 

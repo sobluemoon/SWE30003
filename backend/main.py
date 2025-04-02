@@ -886,66 +886,32 @@ async def set_passenger_pickup(ride_id: int):
 
 @app.get("/rides/{ride_id}/detailed-status")
 async def get_detailed_ride_status(ride_id: int):
-    """
-    Get the detailed status of a ride including driver arrival and passenger pickup
-    """
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    try:
-        # First get the basic ride information
-        cursor.execute(
-            """
-            SELECT r.*, d.driver_id, u.email as driver_email
-            FROM rides r
-            LEFT JOIN drivers d ON r.driver_id = d.driver_id
-            LEFT JOIN users u ON d.driver_id = u.user_id
-            WHERE r.ride_id = %s
-            """,
-            (ride_id,)
-        )
-        
-        ride = cursor.fetchone()
-        if not ride:
-            raise HTTPException(status_code=404, detail="Ride not found")
-        
-        # Now get the detailed status information
-        cursor.execute(
-            """
-            SELECT driver_arrived, passenger_picked_up, last_updated
-            FROM ride_statuses
-            WHERE ride_id = %s
-            """,
-            (ride_id,)
-        )
-        
-        status_details = cursor.fetchone()
-        
-        # Prepare the response
-        response = {
-            "ride_id": ride["ride_id"],
-            "status": ride["status"],
-            "driver_id": ride.get("driver_id"),
-            "driver_email": ride.get("driver_email"),
-            "pickup_location": ride.get("pickup_location"),
-            "dropoff_location": ride.get("dropoff_location"),
-            "customer_id": ride.get("customer_id"),
-            "start_time": ride.get("start_time"),
-            "end_time": ride.get("end_time"),
-            "driver_arrived": False,
-            "passenger_picked_up": False,
-            "last_status_update": None
-        }
-        
-        # Add the detailed status information if available
-        if status_details:
-            response["driver_arrived"] = bool(status_details["driver_arrived"])
-            response["passenger_picked_up"] = bool(status_details["passenger_picked_up"])
-            response["last_status_update"] = status_details["last_updated"]
-        
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
+    # Get the ride
+    cursor.execute("SELECT * FROM rides WHERE ride_id = %s", (ride_id,))
+    ride = cursor.fetchone()
+    
+    if not ride:
         cursor.close()
         conn.close()
+        raise HTTPException(status_code=404, detail="Ride not found")
+    
+    # Create a detailed status object
+    detailed_status = {
+        "status": ride["status"],
+        "driver_id": ride["driver_id"],
+        "customer_id": ride["customer_id"],
+        "start_time": ride["start_time"],
+        "end_time": ride["end_time"],
+        "driver_arrived": ride.get("driver_arrived", False),
+        "passenger_picked_up": ride.get("passenger_picked_up", False),
+        "rating": ride.get("rating"),
+        "feedback": ride.get("feedback")
+    }
+    
+    cursor.close()
+    conn.close()
+    
+    return detailed_status

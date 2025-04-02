@@ -9,6 +9,16 @@ const Navbar = ({ user, onLogout }) => {
   else if (role === "driver") dashboardLink = "/driver-dashboard";
   else if (role === "admin") dashboardLink = "/admin-dashboard";
 
+  // Set up conditional links based on user role
+  let feedbackLink = "/option";
+  if (role === "customer") feedbackLink = "/feedback";
+  else if (role === "driver") feedbackLink = "/driver-feedback";
+  
+  // Set up conditional history links
+  let historyLink = "/option";
+  if (role === "customer") historyLink = "/history";
+  else if (role === "driver") historyLink = "/driver-history";
+
   return (
     <div className="container-fluid nav-bar sticky-top px-0 px-lg-4 py-2 py-lg-0 bg-white shadow-sm">
       <div className="container">
@@ -27,8 +37,8 @@ const Navbar = ({ user, onLogout }) => {
               <a href={isLoggedIn ? "/book" : "/option"} className="nav-item nav-link">Book a Ride</a>
               <a href={dashboardLink} className="nav-item nav-link">Dashboard</a>
               <a href={isLoggedIn ? "/track" : "/option"} className="nav-item nav-link">Track Ride</a>
-              <a href={isLoggedIn ? "/feedback" : "/option"} className="nav-item nav-link">Feedback</a>
-              <a href={isLoggedIn ? "/history" : "/option"} className="nav-item nav-link">History</a>
+              <a href={isLoggedIn ? feedbackLink : "/option"} className="nav-item nav-link">Feedback</a>
+              <a href={isLoggedIn ? historyLink : "/option"} className="nav-item nav-link">History</a>
             </div>
             <div className="d-flex align-items-center">
               {isLoggedIn ? (
